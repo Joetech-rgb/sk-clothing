@@ -33,3 +33,8 @@
 - Repo was first created nested by mistake and flattened. Old copy is in sk-clothing-old and can be deleted. 
 - staging.py and prod.py added after the first run failed to create them. 
 - Nothing has been linted, type-checked or tested yet. No dependencies are installed locally. 
+ 
+## Log, payments webhook 
+- Dates dropped as a concern by the human. Paystack is the gateway. payments app approved for the Phase 0 webhook. 
+- Webhook built: signature check, one row per event, replay safe. Not yet run in CI. 
+- Provisional: error envelope shape, rate limiting at Cloudflare or Nginx. See ADR 0002. 
