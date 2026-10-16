@@ -24,3 +24,12 @@
 11. Paystack test-mode account and keys, kept in secrets and never in the repo. 
 12. Production web server choice (needs a dependency proposal). 
 13. Later phases: WhatsApp coexistence in Ghana, printer and scanner models, opening finance figures, investor details. 
+ 
+## Active tasks 
+- [ ] PR 1: repo skeleton and docs (committed locally, no GitHub remote yet) 
+- [ ] First CI run: fix whatever it reports 
+ 
+## Log 
+- Repo was first created nested by mistake and flattened. Old copy is in sk-clothing-old and can be deleted. 
+- staging.py and prod.py added after the first run failed to create them. 
+- Nothing has been linted, type-checked or tested yet. No dependencies are installed locally. 
