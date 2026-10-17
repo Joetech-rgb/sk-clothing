@@ -38,3 +38,7 @@
 - Dates dropped as a concern by the human. Paystack is the gateway. payments app approved for the Phase 0 webhook. 
 - Webhook built: signature check, one row per event, replay safe. Not yet run in CI. 
 - Provisional: error envelope shape, rate limiting at Cloudflare or Nginx. See ADR 0002. 
+
+## Log, catalog
+- Catalog app built: categories, products, variants, tier prices, image records. See ADR 0004.
+- Not built: photo upload and resizing, price history, discounts. Need boto3 and Pillow approval, and the discount definition.

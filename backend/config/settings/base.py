@@ -6,8 +6,7 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = False
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
-# Only payments is registered so far (Phase 0 webhook). Register each other app under
-# backend/apps when its phase starts.
+# Register each app under backend/apps here only when its phase starts.
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -19,6 +18,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "simple_history",
     "apps.payments",
+    "apps.catalog",
 ]
 
 MIDDLEWARE = [
