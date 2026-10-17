@@ -1,24 +1,24 @@
-[tool.ruff] 
-line-length = 100 
-target-version = "py312" 
- 
-[tool.ruff.lint] 
-select = ["E", "F", "I", "B", "DJ"] 
- 
-[tool.mypy] 
-python_version = "3.12" 
-plugins = ["mypy_django_plugin.main"] 
- 
-[tool.django-stubs] 
-django_settings_module = "config.settings.local" 
- 
-[tool.pytest.ini_options] 
-DJANGO_SETTINGS_MODULE = "config.settings.local" 
-python_files = ["test_*.py"] 
- 
-[tool.ruff.lint.per-file-ignores] 
-"config/settings/*.py" = ["F403", "F405", "E501"] 
- 
-[[tool.mypy.overrides]] 
-module = ["celery", "celery.*"] 
-ignore_missing_imports = true 
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "DJ"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.local"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.local"
+python_files = ["test_*.py"]
+
+[tool.ruff.lint.per-file-ignores]
+"config/settings/*.py" = ["F403", "F405", "E501"]
+
+[[tool.mypy.overrides]]
+module = ["celery", "celery.*"]
+ignore_missing_imports = true

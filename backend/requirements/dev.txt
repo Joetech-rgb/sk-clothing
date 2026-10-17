@@ -1,10 +1,10 @@
--r base.txt 
-pytest~=8.0 
-pytest-django~=4.8 
-factory_boy~=3.3 
-hypothesis~=6.100 
-ruff~=0.6 
-mypy~=1.10 
-django-stubs~=5.0 
-pre-commit~=3.7 
-import-linter~=2.0 
+-r base.txt
+pytest~=8.0
+pytest-django~=4.8
+factory_boy~=3.3
+hypothesis~=6.100
+ruff~=0.6
+mypy~=1.10
+django-stubs~=5.0
+pre-commit~=3.7
+import-linter~=2.0
