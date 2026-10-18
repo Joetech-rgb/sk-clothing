@@ -42,3 +42,13 @@
 ## Log, photos core
 - Pillow approved and added. boto3 approved, added with the upload endpoints. See ADR 0005.
 - OPEN: discount definition. OPEN: numbers for the scalability plan.
+
+## Answers found in the scope and price plan
+- Map provider for the checkout pin: Google Cloud Maps. Distance fee is straight line maths on our server.
+- Photo and backup storage: Cloudflare R2. Video: Cloudflare Stream, optional.
+- Email: Resend or Brevo behind EmailProvider. Final pick open. Error alerts: Sentry free plan.
+- Still open: discount definition, VPS size and OS, staging domain, SMS provider, delivery fee data, station list, product list, return windows, policy texts, traffic numbers.
+
+## Log, inventory
+- inventory app built: ledger, FIFO batches, reservations, expiry job. See ADR 0006.
+- OPEN: if a payment is confirmed after the 15 minute hold expired, what happens? See ADR 0006.

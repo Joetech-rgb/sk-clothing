@@ -6,8 +6,7 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = False
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
-# Only payments is registered so far (Phase 0 webhook). Register each other app under
-# backend/apps when its phase starts.
+# Register each app under backend/apps here only when its phase starts.
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -19,6 +18,8 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "simple_history",
     "apps.payments",
+    "apps.catalog",
+    "apps.inventory",
 ]
 
 MIDDLEWARE = [
@@ -56,6 +57,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 CELERY_TIMEZONE = "Africa/Accra"
+CELERY_BEAT_SCHEDULE = {
+    # Stock held for a checkout is released after 15 minutes. Runs every minute.
+    "expire-stock-reservations": {
+        "task": "apps.inventory.tasks.expire_reservations",
+        "schedule": 60.0,
+    },
+}
 REST_FRAMEWORK = {"DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema"}
 SPECTACULAR_SETTINGS = {"TITLE": "S.K Clothing API", "VERSION": "1.0.0"}
 
