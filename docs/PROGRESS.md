@@ -42,3 +42,6 @@
 ## Log, pricing
 - resolve_price built as a pure function with Money. See ADR 0003.
 - OPEN: how is a discount defined (percentage, amount off, or fixed price)? Discounts are not built until answered.
+
+## Integration branch: catalog, photos core, inventory, discounts applied together for one CI run
+- Deviation from one concern per PR, accepted to get one CI run over all unverified layers. See ADR 0004 to 0009.
