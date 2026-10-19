@@ -45,3 +45,6 @@
 
 ## Integration branch: catalog, photos core, inventory, discounts applied together for one CI run
 - Deviation from one concern per PR, accepted to get one CI run over all unverified layers. See ADR 0004 to 0009.
+
+## Domain core: delivery, order states, login codes, phone numbers
+- Pure rules built and tested. See ADR 0010 and docs/BACKEND-PLAN.md. Items marked CONFIRM in ADR 0010 await the client.
