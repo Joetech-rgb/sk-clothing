@@ -48,3 +48,6 @@
 
 ## Domain core: delivery, order states, login codes, phone numbers
 - Pure rules built and tested. See ADR 0010 and docs/BACKEND-PLAN.md. Items marked CONFIRM in ADR 0010 await the client.
+
+## Domain core: delivery, order states, login codes, phone numbers
+- Pure rules built and tested. See ADR 0010 and docs/BACKEND-PLAN.md. Items marked CONFIRM in ADR 0010 await the client.
