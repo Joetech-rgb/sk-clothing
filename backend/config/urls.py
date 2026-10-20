@@ -2,11 +2,15 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView
 
-from config.views import health
+from config import views
+
+handler404 = "config.api_errors.not_found"
+handler500 = "config.api_errors.server_error"
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/v1/health/", health),
+    path("api/v1/health/", views.health),
+    path("api/v1/health/ready/", views.ready),
     path("api/v1/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/v1/payments/", include("apps.payments.urls")),
 ]

@@ -51,3 +51,6 @@
 
 ## Domain core: delivery, order states, login codes, phone numbers
 - Pure rules built and tested. See ADR 0010 and docs/BACKEND-PLAN.md. Items marked CONFIRM in ADR 0010 await the client.
+
+## Foundation: custom user model, error envelope, request IDs, readiness
+- See ADR 0011. Staff two factor login is required by the brief and not built yet.
