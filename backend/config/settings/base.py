@@ -14,6 +14,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     "rest_framework",
     "drf_spectacular",
     "simple_history",
@@ -88,6 +89,13 @@ CACHES = {
 
 # Believe CF-Connecting-IP only when the server accepts traffic from Cloudflare alone.
 TRUST_CLOUDFLARE_HEADERS = os.environ.get("TRUST_CLOUDFLARE_HEADERS", "") == "1"
+
+# Where published product photos are served from (the Cloudflare R2 public domain). Empty in
+# development, so image URLs are plain paths.
+MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
+
+# The search implementation. Phase 1B points this at Meilisearch; no caller changes.
+SEARCH_BACKEND = "apps.catalog.search_pg.PostgresSearch"
 
 # What /api/v1/health/ready/ checks. Tests turn Redis off.
 READINESS_CHECKS = ("database", "redis")

@@ -17,7 +17,7 @@ SORTS = frozenset({"relevance", "newest", "price_low", "price_high"})
 @dataclass(frozen=True)
 class SearchRequest:
     query: str
-    category_id: int | None = None
+    category_ids: tuple[int, ...] | None = None  # a category and everything under it
     sort: str = "relevance"
     limit: int = 24
     cursor: str | None = None  # opaque; returned by the previous page

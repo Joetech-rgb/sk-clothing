@@ -8,7 +8,7 @@ from rest_framework.exceptions import NotAuthenticated, Throttled, ValidationErr
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
-from .envelope import build_error, code_for_status, plain
+from .envelope import STATUS_CODES, build_error, code_for_status, plain
 from .request_ids import NO_REQUEST, get_request_id
 
 
@@ -26,8 +26,12 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
         code, message, details = "validation_error", "The request was not valid.", response.data
     else:
         code = code_for_status(response.status_code)
+        own_code = getattr(exc, "default_code", None)
+        if response.status_code not in STATUS_CODES and isinstance(own_code, str):
+            code = own_code  # an error with a status of its own, such as 422 variant_unavailable
         if isinstance(exc, NotAuthenticated):
             code = "not_authenticated"
+        details = getattr(exc, "details", None)
         data = response.data
         raw = data.get("detail") if isinstance(data, dict) else None
         message = str(plain(raw)) if raw else "The request could not be completed."

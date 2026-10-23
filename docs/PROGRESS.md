@@ -54,3 +54,6 @@
 
 ## Foundation: custom user model, error envelope, request IDs, readiness
 - See ADR 0011. Staff two factor login is required by the brief and not built yet.
+
+## Storefront browse API: categories, products, search, basket pricing
+- See ADR 0012. Filters by size, colour and price range are not built yet.

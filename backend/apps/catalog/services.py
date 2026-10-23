@@ -12,6 +12,10 @@ from .models import Variant
 class CatalogError(ValueError):
     """A requested variant cannot be sold."""
 
+    def __init__(self, message: str, variant_id: int | None = None) -> None:
+        super().__init__(message)
+        self.variant_id = variant_id
+
 
 @dataclass(frozen=True)
 class CartItem:
@@ -38,7 +42,7 @@ def price_cart(items: Sequence[CartItem]) -> list[PricedLine]:
     for item in items:
         variant = variants.get(item.variant_id)
         if variant is None:
-            raise CatalogError(f"variant {item.variant_id} is not available")
+            raise CatalogError(f"variant {item.variant_id} is not available", item.variant_id)
         tiers = {tier.tier: Money(tier.price_pesewas) for tier in variant.tiers.all()}
         lines.append(
             PriceLineInput(
