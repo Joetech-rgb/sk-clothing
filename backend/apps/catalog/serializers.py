@@ -3,15 +3,12 @@ it) and render the dictionaries the browse and price services return."""
 
 from rest_framework import serializers
 
+from config.serializers import MoneySerializer
+
 from .search import MAX_PAGE_SIZE, SORTS
 
 MAX_CART_LINES = 50
 MAX_LINE_QUANTITY = 10_000
-
-
-class MoneySerializer(serializers.Serializer):
-    pesewas = serializers.IntegerField()
-    display = serializers.CharField()
 
 
 class TierSerializer(serializers.Serializer):

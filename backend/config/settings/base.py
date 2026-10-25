@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "apps.payments",
     "apps.catalog",
     "apps.inventory",
+    "apps.delivery",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [

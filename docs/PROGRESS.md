@@ -57,3 +57,6 @@
 
 ## Storefront browse API: categories, products, search, basket pricing
 - See ADR 0012. Filters by size, colour and price range are not built yet.
+
+## Delivery tables, admin screens and quote endpoint
+- See ADR 0013. Client still to provide: shop location, doorstep fee values, maximum distance, station list. Enter them in the admin.

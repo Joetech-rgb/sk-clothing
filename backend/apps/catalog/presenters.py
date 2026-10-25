@@ -9,10 +9,7 @@ from typing import Any
 
 from apps.pricing.money import Money
 from apps.pricing.services import TIER_THRESHOLDS
-
-
-def money_json(money: Money) -> dict[str, Any]:
-    return {"pesewas": money.pesewas, "display": str(money)}
+from config.presenting import money_json
 
 
 def tier_rows(tiers: Mapping[str, Money]) -> list[dict[str, Any]]:

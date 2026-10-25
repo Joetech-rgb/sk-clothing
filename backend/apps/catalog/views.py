@@ -1,18 +1,15 @@
 """The public storefront API for browsing. No login needed, so these views carry no session or
 CSRF machinery, and a successful read tells Cloudflare it may keep a copy for a short while."""
 
-from typing import Any
-
-from django.utils.cache import patch_cache_control
 from drf_spectacular.utils import extend_schema
 from rest_framework.exceptions import APIException, NotFound, ValidationError
-from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.pricing.money import Money
 from apps.pricing.services import PricingError
+from config.presenting import money_json
+from config.public_api import PublicView, cached, uncached
 
 from . import browse
 from .cursor import decode_cursor
@@ -38,23 +35,11 @@ class VariantUnavailable(APIException):
         self.details = {"variant_id": variant_id} if variant_id is not None else None
 
 
-class PublicView(APIView):
-    authentication_classes: list[Any] = []  # no session, so no cookie and no CSRF check
-    permission_classes = [AllowAny]
-
-
-def _cached(response: Response, *, seconds: int, stale: int) -> Response:
-    patch_cache_control(
-        response, public=True, max_age=seconds, stale_while_revalidate=stale
-    )
-    return response
-
-
 class CategoryListView(PublicView):
     @extend_schema(responses=CategorySerializer(many=True))
     def get(self, request: Request) -> Response:
         response = Response(CategorySerializer(browse.list_categories(), many=True).data)
-        return _cached(response, seconds=300, stale=600)
+        return cached(response, seconds=300, stale=600)
 
 
 class ProductListView(PublicView):
@@ -76,7 +61,7 @@ class ProductListView(PublicView):
             cursor=data.get("cursor") or None,
         )
         response = Response(ProductPageSerializer(browse.product_page(search)).data)
-        return _cached(response, seconds=60, stale=120)
+        return cached(response, seconds=60, stale=120)
 
 
 class ProductDetailView(PublicView):
@@ -85,11 +70,7 @@ class ProductDetailView(PublicView):
         detail = browse.product_detail(slug)
         if detail is None:
             raise NotFound("This product is not available.")
-        return _cached(Response(ProductDetailSerializer(detail).data), seconds=30, stale=60)
-
-
-def _money(money: Money) -> dict[str, Any]:
-    return {"pesewas": money.pesewas, "display": str(money)}
+        return cached(Response(ProductDetailSerializer(detail).data), seconds=30, stale=60)
 
 
 class PriceView(PublicView):
@@ -120,24 +101,22 @@ class PriceView(PublicView):
                     "quantity": line.quantity,
                     "tier": line.tier,
                     "source": line.source,
-                    "unit_price": _money(line.unit_price),
-                    "line_total": _money(line.line_total),
-                    "list_price": _money(line.list_price),
-                    "tier_price": _money(line.tier_price),
+                    "unit_price": money_json(line.unit_price),
+                    "line_total": money_json(line.line_total),
+                    "list_price": money_json(line.list_price),
+                    "tier_price": money_json(line.tier_price),
                     "discounts": [
                         {
                             "discount_id": d.discount_id,
                             "kind": d.kind,
                             "value": d.value,
-                            "unit_price_after": _money(d.unit_price_after),
+                            "unit_price_after": money_json(d.unit_price_after),
                         }
                         for d in line.discounts
                     ],
                 }
                 for line in lines
             ],
-            "subtotal": _money(subtotal),
+            "subtotal": money_json(subtotal),
         }
-        response = Response(PriceResponseSerializer(payload).data)
-        response["Cache-Control"] = "no-store"
-        return response
+        return uncached(Response(PriceResponseSerializer(payload).data))
