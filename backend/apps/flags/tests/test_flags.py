@@ -1,5 +1,6 @@
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 
@@ -228,70 +229,192 @@ def test_flag_key_lookup_uses_a_unique_index():
     assert FeatureFlag._meta.get_field("key").unique is True
 
 
-# --- admin ------------------------------------------------------------------------------------
+# --- admin: who may do what -------------------------------------------------------------------
+
+PASSWORD = "pw-12345-xyz"
+FLAGS = "/admin/flags/featureflag/"
+HISTORY = "/admin/flags/flagchange/"
 
 
-@pytest.fixture
-def staff_client(client):
-    user = get_user_model().objects.create_superuser("boss", "boss@example.com", "pw-12345-xyz")
+def staff(email, *codenames, is_staff=True):
+    user = get_user_model().objects.create_user(email=email, password=PASSWORD, is_staff=is_staff)
+    if codenames:
+        user.user_permissions.set(Permission.objects.filter(codename__in=codenames))
+    return user
+
+
+def login(client, user):
     client.force_login(user)
-    return client, user
+    return client
 
 
-def test_admin_add_is_attributed_to_the_staff_member(staff_client):
-    client, user = staff_client
-    response = client.post(
-        "/admin/flags/featureflag/add/",
-        {"key": "reviews", "enabled": "on", "description": "Product reviews"},
+def change_url(flag):
+    return f"{FLAGS}{flag.pk}/change/"
+
+
+def list_toggle(flag):
+    return {
+        "form-TOTAL_FORMS": "1",
+        "form-INITIAL_FORMS": "1",
+        "form-MIN_NUM_FORMS": "0",
+        "form-MAX_NUM_FORMS": "1000",
+        "form-0-id": str(flag.pk),
+        "form-0-enabled": "on",
+        "_save": "Save",
+    }
+
+
+def test_staff_with_the_change_permission_can_flip_a_flag_and_is_named_in_history(client):
+    # Decision 1: the existing Django change permission is enough. No separate role.
+    flag = set_flag("reviews", False, actor="system")
+    user = staff("ama@example.com", "view_featureflag", "change_featureflag")
+    response = login(client, user).post(
+        change_url(flag), {"enabled": "on", "description": "now on"}
     )
+    assert response.status_code == 302
+    assert is_enabled("reviews")
+    last = changes()[-1]
+    assert last.actor == f"user:{user.pk}"
+    assert last.before == {"enabled": False, "description": ""}
+    assert last.after == {"enabled": True, "description": "now on"}
+    assert last.created_at is not None
+
+
+def test_a_superuser_can_flip_a_flag_and_is_named_in_history(client):
+    boss = get_user_model().objects.create_superuser("boss@example.com", PASSWORD)
+    flag = set_flag("reviews", False, actor="system")
+    login(client, boss).post(change_url(flag), {"enabled": "on", "description": ""})
+    assert is_enabled("reviews")
+    assert changes()[-1].actor == f"user:{boss.pk}"
+
+
+def test_staff_with_only_the_view_permission_cannot_change_a_flag(client):
+    flag = set_flag("reviews", False, actor="system")
+    user = staff("viewer@example.com", "view_featureflag")
+    c = login(client, user)
+    assert c.get(FLAGS).status_code == 200
+    assert c.post(change_url(flag), {"enabled": "on", "description": "x"}).status_code == 403
+    assert is_enabled("reviews") is False
+    assert len(changes()) == 1  # only the creation
+
+
+def test_staff_with_no_flag_permissions_are_locked_out_of_flags_and_history(client):
+    flag = set_flag("reviews", False, actor="system")
+    c = login(client, staff("nobody@example.com"))
+    assert c.get(FLAGS).status_code == 403
+    assert c.get(change_url(flag)).status_code == 403
+    assert c.post(change_url(flag), {"enabled": "on"}).status_code == 403
+    assert c.get(HISTORY).status_code == 403
+    assert is_enabled("reviews") is False
+
+
+def test_customers_and_anonymous_visitors_are_sent_to_the_login_page(client):
+    flag = set_flag("reviews", False, actor="system")
+    anonymous = client.post(change_url(flag), {"enabled": "on", "description": ""})
+    assert anonymous.status_code == 302 and "login" in anonymous["Location"]
+    # a customer, even one holding the permission, is not staff and cannot use the admin
+    customer = staff("shopper@example.com", "change_featureflag", is_staff=False)
+    response = login(client, customer).post(change_url(flag), {"enabled": "on"})
+    assert response.status_code == 302 and "login" in response["Location"]
+    assert is_enabled("reviews") is False
+    assert len(changes()) == 1
+
+
+def test_creating_a_flag_needs_the_add_permission(client):
+    changer = staff("changer@example.com", "view_featureflag", "change_featureflag")
+    data = {"key": "reviews", "enabled": "on", "description": "Product reviews"}
+    c = login(client, changer)
+    assert c.get(f"{FLAGS}add/").status_code == 403
+    assert c.post(f"{FLAGS}add/", data).status_code == 403
+    assert FeatureFlag.objects.count() == 0
+    adder = staff("adder@example.com", "add_featureflag", "view_featureflag")
+    response = login(client, adder).post(f"{FLAGS}add/", data)
     assert response.status_code == 302
     (change,) = changes()
-    assert change.actor == f"user:{user.pk}"
+    assert change.actor == f"user:{adder.pk}"
+    assert change.before is None
     assert change.after == {"enabled": True, "description": "Product reviews"}
-    assert is_enabled("reviews")
 
 
-def test_admin_edit_is_recorded_and_the_key_cannot_be_changed(staff_client):
-    client, user = staff_client
-    flag = set_flag("reviews", False, actor="system")
-    response = client.post(
-        f"/admin/flags/featureflag/{flag.pk}/change/",
-        {"key": "renamed", "enabled": "on", "description": "now on"},
+def test_adding_a_key_that_already_exists_is_refused_and_records_nothing(client):
+    set_flag("reviews", False, actor="system")
+    adder = staff("adder@example.com", "add_featureflag", "view_featureflag")
+    response = login(client, adder).post(
+        f"{FLAGS}add/", {"key": "reviews", "enabled": "on", "description": "again"}
     )
-    assert response.status_code == 302
-    assert FeatureFlag.objects.get().key == "reviews"
-    assert is_enabled("reviews")
-    assert changes()[-1].actor == f"user:{user.pk}"
-    assert FlagChange.objects.count() == 2
+    assert response.status_code == 200  # the form is shown again with an error
+    assert is_enabled("reviews") is False
+    assert len(changes()) == 1
 
 
-def test_admin_list_toggle_is_recorded(staff_client):
-    client, user = staff_client
-    flag = set_flag("reviews", False, actor="system")
-    response = client.post(
-        "/admin/flags/featureflag/",
-        {
-            "form-TOTAL_FORMS": "1",
-            "form-INITIAL_FORMS": "1",
-            "form-MIN_NUM_FORMS": "0",
-            "form-MAX_NUM_FORMS": "1000",
-            "form-0-id": str(flag.pk),
-            "form-0-enabled": "on",
-            "_save": "Save",
-        },
+def test_a_bad_key_in_the_admin_is_refused_and_records_nothing(client):
+    adder = staff("adder@example.com", "add_featureflag", "view_featureflag")
+    response = login(client, adder).post(
+        f"{FLAGS}add/", {"key": "Bad Key!", "enabled": "on", "description": ""}
     )
-    assert response.status_code == 302
-    assert is_enabled("reviews")
-    assert changes()[-1].actor == f"user:{user.pk}"
+    assert response.status_code == 200
+    assert FeatureFlag.objects.count() == 0
+    assert FlagChange.objects.count() == 0
 
 
-def test_admin_cannot_delete_flags_and_history_is_read_only(staff_client):
-    client, _ = staff_client
+def test_the_key_cannot_be_renamed_after_creation(client):
+    # Decision 2: a flag's key is fixed once it exists.
+    flag = set_flag("reviews", False, actor="system")
+    user = staff("ama@example.com", "view_featureflag", "change_featureflag")
+    c = login(client, user)
+    form = c.get(change_url(flag)).context["adminform"].form
+    assert "key" not in form.fields
+    c.post(change_url(flag), {"key": "renamed", "enabled": "on", "description": ""})
+    assert list(FeatureFlag.objects.values_list("key", flat=True)) == ["reviews"]
+    assert changes("renamed") == []
+
+
+def test_toggling_from_the_list_needs_the_change_permission(client):
+    flag = set_flag("reviews", False, actor="system")
+    viewer = staff("viewer@example.com", "view_featureflag")
+    assert login(client, viewer).post(FLAGS, list_toggle(flag)).status_code == 403
+    assert is_enabled("reviews") is False
+    changer = staff("changer@example.com", "view_featureflag", "change_featureflag")
+    assert login(client, changer).post(FLAGS, list_toggle(flag)).status_code == 302
+    assert is_enabled("reviews") is True
+    assert changes()[-1].actor == f"user:{changer.pk}"
+
+
+def test_nobody_can_delete_a_flag_even_holding_the_delete_permission(client):
     flag = set_flag("reviews", True, actor="system")
-    assert (
-        client.post(f"/admin/flags/featureflag/{flag.pk}/delete/", {"post": "yes"}).status_code
-        == 403
-    )
-    assert FeatureFlag.objects.count() == 1
-    assert client.get("/admin/flags/flagchange/add/").status_code == 403
-    assert client.get("/admin/flags/flagchange/").status_code == 200
+    everything = ("view_featureflag", "add_featureflag", "change_featureflag", "delete_featureflag")
+    powerful = staff("powerful@example.com", *everything)
+    superuser = get_user_model().objects.create_superuser("boss@example.com", PASSWORD)
+    for user in (powerful, superuser):
+        response = login(client, user).post(f"{change_url(flag)[:-7]}delete/", {"post": "yes"})
+        assert response.status_code == 403
+    assert is_enabled("reviews") is True
+
+
+def test_two_staff_members_are_each_named_for_their_own_change(client):
+    flag = set_flag("reviews", False, actor="system")
+    perms = ("view_featureflag", "change_featureflag")
+    ama, kofi = staff("ama@example.com", *perms), staff("kofi@example.com", *perms)
+    login(client, ama).post(change_url(flag), {"enabled": "on", "description": ""})
+    login(client, kofi).post(change_url(flag), {"description": ""})  # unticked: switched off
+    rows = changes()
+    assert [row.actor for row in rows] == ["system", f"user:{ama.pk}", f"user:{kofi.pk}"]
+    assert [row.after["enabled"] for row in rows] == [False, True, False]
+
+
+def test_the_history_screen_is_view_only_even_with_every_permission(client):
+    set_flag("reviews", True, actor="system")
+    row = FlagChange.objects.get()
+    everything = ("view_flagchange", "add_flagchange", "change_flagchange", "delete_flagchange")
+    c = login(client, staff("auditor@example.com", *everything))
+    assert c.get(HISTORY).status_code == 200
+    assert c.get(f"{HISTORY}add/").status_code == 403
+    assert c.post(f"{HISTORY}{row.pk}/change/", {"actor": "someone else"}).status_code == 403
+    assert c.post(f"{HISTORY}{row.pk}/delete/", {"post": "yes"}).status_code == 403
+    assert FlagChange.objects.get().actor == "system"
+
+
+def test_only_the_view_permission_is_needed_to_read_the_history(client):
+    set_flag("reviews", True, actor="system")
+    assert login(client, staff("a@example.com", "view_flagchange")).get(HISTORY).status_code == 200
+    assert login(client, staff("b@example.com", "view_featureflag")).get(HISTORY).status_code == 403

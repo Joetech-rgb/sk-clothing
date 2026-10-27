@@ -29,17 +29,20 @@ recorded: who, what and when.
 - If profiling later shows flag reads matter, add a Redis cache that `set_flag` clears on write.
 
 ## Interpretations (CONFIRMED)
-1. Any staff user with the Django permission to change flags may flip one. There is no separate
-   role.
-2. The admin shows history read-only on its own screen. A flag cannot be renamed after creation.
-3. Seeding flags from a data migration is not covered; use `set_flag(..., actor="system")`.
+1. Any staff user holding the existing Django change permission may flip a flag. There is no
+   separate role. Creating a flag needs the add permission. Nobody can delete a flag, whatever
+   permissions they hold.
+2. A flag's key cannot be renamed after creation. The admin shows it read-only.
+3. Raw SQL and data migrations may bypass the guards. This limitation is accepted.
 
 ## How it was checked
-38 tests, plus a mutation check: 14 deliberate breakages (ignoring the on switch, recording
-no-ops, no audit row, wrong before value, wrong actor, optional actor, no race retry, snapshot
-querying the database, direct saves allowed, bulk update allowed, editable history, no key
-validation, admin skipping the audit, admin delete allowed) were each caught. Query counts are
-asserted. Not yet run on PostgreSQL.
+48 tests, plus a mutation check: 22 deliberate breakages, each caught. They cover the audit trail
+(no row, wrong before value, wrong actor, optional actor, recording no-ops, no race retry), the
+write guards (direct save, bulk update, editable history), and permissions (key editable, any
+staff may change, history editable, deletable or open to all staff, delete permission honoured).
+Permission tests use real users: view-only staff, staff with no permissions, a customer holding
+the permission, anonymous visitors, and a superuser. Query counts are asserted. The admin tests
+use a copy of `identity.User` and its manager. Not yet run on PostgreSQL.
 
 ## Not built yet
 Per-user or percentage rollouts, a cache, and an API endpoint for the storefront to read flags.
