@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.inventory",
     "apps.delivery",
+    "apps.flags",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
