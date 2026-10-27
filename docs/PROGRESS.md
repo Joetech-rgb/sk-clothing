@@ -60,3 +60,6 @@
 
 ## Delivery tables, admin screens and quote endpoint
 - See ADR 0013. Client still to provide: shop location, doorstep fee values, maximum distance, station list. Enter them in the admin.
+
+## Feature flags
+- Feature flags with audit trail built (set_flag, snapshot, read-only history). See ADR 0015. No feature uses a flag yet.
