@@ -60,3 +60,6 @@
 
 ## Delivery tables, admin screens and quote endpoint
 - See ADR 0013. Client still to provide: shop location, doorstep fee values, maximum distance, station list. Enter them in the admin.
+
+## Login by phone code
+- Request and verify endpoints built on the OTP rules, with database-enforced limits, daily SMS cap, Origin check and session rotation. See ADR 0016. Migration comes from the [gen-migrations] workflow. Production cookie settings not yet reviewed. No real SMS provider yet.
