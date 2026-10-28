@@ -24,7 +24,6 @@ from datetime import UTC, datetime, timedelta
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection, transaction
-from django.db.models import F
 from django.utils import timezone
 
 from apps.messaging.factory import ProviderNotConfigured, get_sms_provider
@@ -39,6 +38,7 @@ DEFAULT_LIMITS: dict[str, int | str] = {
     "resend_gap_seconds": 60,  # one code per number per minute
     "codes_per_hour": 5,  # and five per number per hour
     "daily_sms_cap": 500,  # login SMS for the whole site, per day
+    "daily_sms_reserved_for_customers": 100,  # of those, kept for existing customers
     "request_ip_rate": "30/hour",  # requests for a code, per caller address
     "verify_ip_rate": "60/hour",  # attempts to verify, per caller address
 }
@@ -46,6 +46,11 @@ DEFAULT_LIMITS: dict[str, int | str] = {
 INVALID = "invalid"
 LOCKED = "locked"
 OK = "ok"
+
+# What a phone number is, for deciding who may be sent a code and from which allowance.
+NEW = "new"  # no account yet
+CUSTOMER = "customer"  # an active, non-staff account
+REFUSED = "refused"  # staff or switched off: never gets a code
 
 
 def limit(name: str) -> int | str:
@@ -82,7 +87,7 @@ def _key() -> bytes:
     return hmac.new(settings.SECRET_KEY.encode(), b"login-code-v1", hashlib.sha256).digest()
 
 
-def _may_use_phone_login(phone: str) -> bool:
+def _login_kind(phone: str) -> str:
     """Staff and switched-off accounts never log in with a code (staff use password and 2FA)."""
     row = (
         get_user_model()
@@ -91,9 +96,9 @@ def _may_use_phone_login(phone: str) -> bool:
         .first()
     )
     if row is None:
-        return True
+        return NEW
     is_staff, is_superuser, is_active = row
-    return is_active and not is_staff and not is_superuser
+    return CUSTOMER if is_active and not is_staff and not is_superuser else REFUSED
 
 
 def _lock_phone(phone: str) -> None:
@@ -128,15 +133,40 @@ def _enforce_phone_limits(phone: str, now: datetime) -> None:
         raise TooSoon(math.ceil((free_at - now).total_seconds()))
 
 
-def _reserve_sms(now: datetime) -> None:
-    """Take one message from today's allowance, or raise. Never lets the count pass the cap."""
+def _alert_on_usage(used: int, ceiling: int, customer: bool) -> None:
+    """Logged once each as the counter passes 80% and reaches the ceiling. The error goes to
+    Sentry, so someone hears about a flood or a runaway day. No personal data is logged."""
+    who = "customers" if customer else "new numbers"
+    if used == ceiling:
+        logger.error("login SMS allowance for %s is used up for today (%s)", who, ceiling)
+    elif ceiling >= 5 and used == (ceiling * 4) // 5:
+        logger.warning("login SMS allowance for %s is 80%% used (%s of %s)", who, used, ceiling)
+
+
+def _reserve_sms(now: datetime, *, customer: bool) -> None:
+    """Take one message from today's allowance, or raise. Never lets the count pass the cap.
+
+    Numbers with no account can use only part of the allowance; the rest is kept for existing
+    customers, so a flood of requests for made-up numbers cannot stop real customers logging in.
+    """
+    cap = int(limit("daily_sms_cap"))
+    reserved = int(limit("daily_sms_reserved_for_customers"))
+    ceiling = cap if customer else max(cap - reserved, 0)
     day = now.astimezone(UTC).date()
     SmsDailyCount.objects.get_or_create(day=day)
-    taken = SmsDailyCount.objects.filter(day=day, count__lt=int(limit("daily_sms_cap"))).update(
-        count=F("count") + 1
-    )
-    if not taken:
+    # One statement, so the database applies it to one request at a time, and RETURNING gives
+    # each request its own count, so each alert fires exactly once.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            'UPDATE identity_smsdailycount SET "count" = "count" + 1 '
+            'WHERE "day" = %s AND "count" < %s RETURNING "count"',
+            [day, ceiling],
+        )
+        row = cursor.fetchone()
+    if row is None:
+        logger.warning("login SMS refused: the daily allowance is used up")
         raise DailyCapReached
+    _alert_on_usage(row[0], ceiling, customer)
 
 
 def request_code(raw_phone: str, *, now: datetime | None = None) -> bool:
@@ -147,7 +177,8 @@ def request_code(raw_phone: str, *, now: datetime | None = None) -> bool:
     """
     now = now or _now()
     phone = normalise_ghana_phone(raw_phone)
-    if not _may_use_phone_login(phone):
+    kind = _login_kind(phone)
+    if kind == REFUSED:
         return False
     try:
         provider = get_sms_provider()
@@ -172,7 +203,7 @@ def request_code(raw_phone: str, *, now: datetime | None = None) -> bool:
                     )
             except IntegrityError as error:  # another request issued a live code a moment ago
                 raise TooSoon(int(limit("resend_gap_seconds"))) from error
-            _reserve_sms(now)  # last, so a refused request never uses up the allowance
+            _reserve_sms(now, customer=kind == CUSTOMER)  # last: a refusal uses nothing up
     except (TooSoon, DailyCapReached):
         raise
     text = f"Your S.K Clothing code is {code}. It expires in 5 minutes."
@@ -239,3 +270,24 @@ def verify_code(raw_phone: str, submitted: str, *, now: datetime | None = None) 
         if user is None:
             return VerifyResult(INVALID)
         return VerifyResult(OK, user.pk, created)
+
+
+def purge_old_login_codes(
+    *,
+    now: datetime | None = None,
+    older_than: timedelta = timedelta(days=7),
+    batch_size: int = 1000,
+) -> int:
+    """Delete login codes older than a week, in small batches so no long lock is held. Returns how
+    many were deleted. The daily SMS counts are kept: they are one tiny row a day and show cost."""
+    cutoff = (now or _now()) - older_than
+    deleted = 0
+    while True:
+        ids = list(
+            LoginCode.objects.filter(created_at__lt=cutoff).values_list("pk", flat=True)[
+                :batch_size
+            ]
+        )
+        if not ids:
+            return deleted
+        deleted += LoginCode.objects.filter(pk__in=ids).delete()[0]

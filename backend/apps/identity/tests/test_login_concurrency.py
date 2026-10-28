@@ -106,6 +106,7 @@ def test_simultaneous_requests_for_one_number_send_exactly_one_code(sms):
 def test_the_daily_cap_cannot_be_exceeded_by_simultaneous_requests(sms, settings):
     settings.LOGIN_CODE_LIMITS = {
         "daily_sms_cap": 5,
+        "daily_sms_reserved_for_customers": 0,
         "request_ip_rate": "10000/hour",
         "verify_ip_rate": "10000/hour",
     }
@@ -136,3 +137,40 @@ def test_simultaneous_first_logins_for_different_numbers_each_get_one_account(sm
     statuses = in_parallel(8, lambda i: verify(number(i), codes[i]))
     assert statuses == [200] * 8
     assert User.objects.count() == 8
+
+
+def post_request(phone):
+    return APIClient().post(REQUEST, {"phone": phone}, format="json").status_code
+
+
+def test_the_customer_reserve_survives_a_flood_of_made_up_numbers(sms, settings):
+    settings.LOGIN_CODE_LIMITS = {
+        "daily_sms_cap": 6,
+        "daily_sms_reserved_for_customers": 2,
+        "request_ip_rate": "10000/hour",
+        "verify_ip_rate": "10000/hour",
+    }
+    customers = [User.objects.create_user(phone=number(900 + n)).phone for n in range(10)]
+    flood = Counter(in_parallel(40, lambda i: post_request(number(i))))
+    assert flood == {202: 4, 503: 36}  # made-up numbers get cap minus the reserve, no more
+    answers = Counter(in_parallel(10, lambda i: post_request(customers[i])))
+    assert answers == {202: 2, 503: 8}  # customers still get the reserved two
+    assert SmsDailyCount.objects.get().count == 6
+    assert len(sms.sent) == 6
+
+
+def test_each_alert_fires_exactly_once_even_when_requests_race(sms, settings, caplog):
+    import logging
+
+    settings.LOGIN_CODE_LIMITS = {
+        "daily_sms_cap": 10,
+        "daily_sms_reserved_for_customers": 0,
+        "request_ip_rate": "10000/hour",
+        "verify_ip_rate": "10000/hour",
+    }
+    caplog.set_level(logging.INFO)
+    statuses = Counter(in_parallel(40, lambda i: post_request(number(i))))
+    assert statuses == {202: 10, 503: 30}
+    records = [r for r in caplog.records if r.name == "apps.identity.login"]
+    assert sum("80%" in r.getMessage() for r in records) == 1
+    assert sum(r.levelno == logging.ERROR for r in records) == 1

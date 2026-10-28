@@ -63,3 +63,6 @@
 
 ## Login by phone code
 - Request and verify endpoints built on the OTP rules, with database-enforced limits, daily SMS cap, Origin check and session rotation. See ADR 0016. Migration comes from the [gen-migrations] workflow. Production cookie settings not yet reviewed. No real SMS provider yet.
+
+## Login hardening
+- Daily SMS allowance with 100 messages reserved for existing customers, 80% and used-up alerts, logout, who-am-I, purge of old login codes (task not yet scheduled), fake SMS refused under staging and production, explicit cookie settings and CSRF_TRUSTED_ORIGINS from the environment. See ADR 0016. Google sign-in and staff two-factor still await approval.

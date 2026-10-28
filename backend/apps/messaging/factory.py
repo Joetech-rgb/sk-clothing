@@ -4,9 +4,10 @@ SMS_PROVIDER (a setting) picks it:
 - "fake": records messages instead of sending them. For tests and local work only.
 - a dotted path such as "apps.messaging.sms_hubtel.build": a function returning a provider.
 - unset: the fake in DEBUG, otherwise nothing, so staging and production refuse to send until a
-  real provider is configured. Never set "fake" in production.
+  real provider is configured. It is refused outright under the staging and production settings.
 """
 
+import os
 from importlib import import_module
 
 from django.conf import settings
@@ -26,9 +27,16 @@ def fake_sms() -> FakeSmsProvider:
     return _fake
 
 
+def _deployed() -> bool:
+    """True when running with the staging or production settings."""
+    return os.environ.get("DJANGO_SETTINGS_MODULE", "").endswith((".prod", ".staging"))
+
+
 def get_sms_provider() -> SmsProvider:
     name = getattr(settings, "SMS_PROVIDER", "")
     if name == "fake" or (not name and settings.DEBUG):
+        if _deployed():  # a stray setting must never make codes vanish on a live site
+            raise ProviderNotConfigured("the fake SMS provider cannot be used when deployed")
         return _fake
     if not name:
         raise ProviderNotConfigured("SMS_PROVIDER is not set")

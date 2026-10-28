@@ -1,12 +1,14 @@
-"""Login by phone code. Two public endpoints under /api/v1/auth/."""
+"""Login by phone code, logout and "who am I", under /api/v1/auth/."""
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth import login as start_session
+from django.contrib.auth import logout as end_session
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.exceptions import APIException, Throttled, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from config.public_api import PublicView, uncached
 from config.throttling import AnonThrottle
@@ -47,13 +49,13 @@ class VerifyCodeSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=16)
 
 
-class _LoginView(PublicView):
+class _SessionView(PublicView):
     def initial(self, request: Request, *args: object, **kwargs: object) -> None:
         check_origin(request)  # before anything is counted or sent
         super().initial(request, *args, **kwargs)
 
 
-class RequestCodeView(_LoginView):
+class RequestCodeView(_SessionView):
     throttle_classes = [AnonThrottle, RequestCodeIPThrottle]
 
     @extend_schema(request=RequestCodeSerializer, responses={202: None})
@@ -72,7 +74,7 @@ class RequestCodeView(_LoginView):
         return uncached(Response({"expires_in_seconds": int(otp.TTL.total_seconds())}, status=202))
 
 
-class VerifyCodeView(_LoginView):
+class VerifyCodeView(_SessionView):
     throttle_classes = [AnonThrottle, VerifyCodeIPThrottle]
 
     @extend_schema(request=VerifyCodeSerializer, responses={200: None})
@@ -91,4 +93,36 @@ class VerifyCodeView(_LoginView):
         start_session(request._request, user, backend="django.contrib.auth.backends.ModelBackend")
         return uncached(
             Response({"is_new_customer": result.is_new_customer, "user": {"id": user.pk}})
+        )
+
+
+class LogoutView(_SessionView):
+    """Ends the session. Safe to call when nobody is signed in. Protected by the Origin check
+    rather than a CSRF token, so the storefront needs no token for it; the worst a forged
+    request could do is sign a visitor out."""
+
+    throttle_classes = [AnonThrottle]
+
+    @extend_schema(request=None, responses={204: None})
+    def post(self, request: Request) -> Response:
+        end_session(request._request)
+        return uncached(Response(status=204))
+
+
+class MeView(APIView):
+    """Who is signed in. 401 when nobody is, so the storefront can show the login screen."""
+
+    @extend_schema(responses={200: None})
+    def get(self, request: Request) -> Response:
+        user = request.user
+        return uncached(
+            Response(
+                {
+                    "id": user.pk,
+                    "full_name": user.full_name,
+                    "phone": user.phone,
+                    "email": user.email,
+                    "is_staff": user.is_staff,
+                }
+            )
         )

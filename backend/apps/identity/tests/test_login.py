@@ -364,7 +364,7 @@ def test_verify_attempts_per_address_are_limited(sms, settings):
 
 
 def test_the_daily_cap_stops_sending_and_resets_the_next_day(sms, settings, clock):
-    settings.LOGIN_CODE_LIMITS = {"daily_sms_cap": 3}
+    settings.LOGIN_CODE_LIMITS = {"daily_sms_cap": 3, "daily_sms_reserved_for_customers": 0}
     codes = [ask(APIClient(), number(n)).status_code for n in range(4)]
     assert codes == [202, 202, 202, 503]
     refused = ask(APIClient(), number(3))
@@ -378,7 +378,7 @@ def test_the_daily_cap_stops_sending_and_resets_the_next_day(sms, settings, cloc
 
 
 def test_a_refused_request_does_not_use_up_the_allowance(sms, settings, clock):
-    settings.LOGIN_CODE_LIMITS = {"daily_sms_cap": 2}
+    settings.LOGIN_CODE_LIMITS = {"daily_sms_cap": 2, "daily_sms_reserved_for_customers": 0}
     ask(APIClient())
     ask(APIClient())  # too soon: refused
     assert SmsDailyCount.objects.get().count == 1
