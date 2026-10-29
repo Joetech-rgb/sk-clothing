@@ -66,3 +66,9 @@
 
 ## Login hardening
 - Daily SMS allowance with 100 messages reserved for existing customers, 80% and used-up alerts, logout, who-am-I, purge of old login codes (task not yet scheduled), fake SMS refused under staging and production, explicit cookie settings and CSRF_TRUSTED_ORIGINS from the environment. See ADR 0016. Google sign-in and staff two-factor still await approval.
+
+## Checkout
+- POST /api/v1/orders/: idempotent, prices and quotes on the server, holds stock all-or-nothing, per-number open order limit. See ADR 0017. Needs a decision on how long pay-on-delivery and awaiting-quote orders hold stock. Payment, expiry cancelling and order lookup not built yet.
+
+## Order models and transition service
+- Orders, lines, events and sub-orders built on the state machine. See ADR 0014. Cart, checkout and payment wiring come next.

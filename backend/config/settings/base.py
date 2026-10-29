@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.inventory",
     "apps.delivery",
+    "apps.orders",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -76,6 +77,11 @@ CELERY_BEAT_SCHEDULE = {
     "expire-stock-reservations": {
         "task": "apps.inventory.tasks.expire_reservations",
         "schedule": 60.0,
+    },
+    # Login codes older than a week are deleted. Runs once a day.
+    "purge-old-login-codes": {
+        "task": "apps.identity.tasks.purge_old_login_codes",
+        "schedule": 86400.0,
     },
 }
 

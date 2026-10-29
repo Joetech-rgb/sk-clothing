@@ -53,3 +53,15 @@ def price_cart(items: Sequence[CartItem]) -> list[PricedLine]:
             )
         )
     return resolve_price(lines)
+
+
+def variant_labels(variant_ids: Sequence[int]) -> dict[int, str]:
+    """A readable name for each variant, such as "Red shirt - M, Red", for freezing onto order
+    lines. Variants that do not exist are left out."""
+    labels = {}
+    for variant in Variant.objects.filter(id__in=set(variant_ids)).select_related("product"):
+        options = ", ".join(part for part in (variant.size, variant.colour) if part)
+        labels[variant.id] = (
+            f"{variant.product.name} - {options}" if options else variant.product.name
+        )
+    return labels
