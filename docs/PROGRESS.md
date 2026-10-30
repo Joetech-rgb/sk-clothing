@@ -72,3 +72,6 @@
 
 ## Order models and transition service
 - Orders, lines, events and sub-orders built on the state machine. See ADR 0014. Cart, checkout and payment wiring come next.
+
+## Payments
+- Start a payment, confirm it with Paystack verify (webhook and return page), apply it to the order and its stock, late-payment rule from ADR 0008. See ADR 0018. Never run against real Paystack yet. Refunds, expiry cancelling and staff screens for mismatched or duplicate payments not built.
