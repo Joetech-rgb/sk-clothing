@@ -11,3 +11,12 @@ class CheckoutThrottle(AnonThrottle):
 
     def get_rate(self) -> str:
         return str(checkout.limit("checkout_ip_rate"))
+
+
+class LookupThrottle(AnonThrottle):
+    """Order look-ups per caller address."""
+
+    scope = "order_lookup_ip"
+
+    def get_rate(self) -> str:
+        return str(checkout.limit("lookup_ip_rate"))

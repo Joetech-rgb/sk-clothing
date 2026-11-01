@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_LIMITS: dict[str, int | str] = {
     "open_orders_per_phone": 3,  # unpaid orders from one number inside the hold window
     "checkout_ip_rate": "30/hour",  # checkouts per caller address
+    "lookup_ip_rate": "30/hour",  # order look-ups per caller address
 }
 HOLD_WINDOW = inventory.RESERVATION_TTL
 

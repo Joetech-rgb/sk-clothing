@@ -17,9 +17,9 @@ from config.presenting import money_json
 from config.public_api import PublicView, uncached
 from config.throttling import AnonThrottle
 
-from . import checkout
+from . import checkout, lookup
 from .models import Order
-from .throttles import CheckoutThrottle
+from .throttles import CheckoutThrottle, LookupThrottle
 
 KEY_SHAPE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
@@ -108,13 +108,12 @@ class CheckoutSerializer(serializers.Serializer):
     payment_method = serializers.ChoiceField(choices=["online", "cod"], default="online")
 
 
-def _order_json(result: checkout.CheckoutResult) -> dict:
-    order: Order = result.order
+def order_json(order: Order) -> dict:
+    """What a customer may see of their order. No keys, internal ids or contact details."""
     fee = order.delivery_fee_pesewas
     total = order.total_pesewas
     return {
         "reference": order.reference,
-        "replayed": not result.created,
         "payment_status": order.payment,
         "fulfilment_status": order.fulfilment,
         "refund_status": order.refund,
@@ -134,8 +133,15 @@ def _order_json(result: checkout.CheckoutResult) -> dict:
             }
             for line in order.lines.all()
         ],
-        "stock_held_until": result.reservation_expires_at,
         "created_at": order.created_at,
+    }
+
+
+def _checkout_json(result: checkout.CheckoutResult) -> dict:
+    return {
+        **order_json(result.order),
+        "replayed": not result.created,
+        "stock_held_until": result.reservation_expires_at,
     }
 
 
@@ -201,5 +207,32 @@ class CheckoutView(PublicView):
             raise TooManyOpenOrders from error
         except checkout.BadDelivery as error:
             raise ValidationError({"delivery": str(error)}) from error
-        response = Response(_order_json(result), status=201 if result.created else 200)
+        response = Response(_checkout_json(result), status=201 if result.created else 200)
         return uncached(response)
+
+
+class NotFound(Refusal):
+    status_code = 404
+    default_code = "order_not_found"
+    default_detail = "We could not find an order with that reference and phone number."
+    reason = "order_not_found"
+
+
+class LookupSerializer(serializers.Serializer):
+    reference = serializers.CharField(max_length=24)
+    phone = serializers.CharField(max_length=32)
+
+
+class OrderLookupView(PublicView):
+    """Look an order up again with its reference and the phone number it was placed with."""
+
+    throttle_classes = [AnonThrottle, LookupThrottle]
+
+    @extend_schema(request=LookupSerializer, responses={200: None})
+    def post(self, request: Request) -> Response:
+        body = LookupSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        order = lookup.find_order(body.validated_data["reference"], body.validated_data["phone"])
+        if order is None:
+            raise NotFound
+        return uncached(Response(order_json(order)))

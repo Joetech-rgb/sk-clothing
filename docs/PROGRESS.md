@@ -75,3 +75,6 @@
 
 ## Payments
 - Start a payment, confirm it with Paystack verify (webhook and return page), apply it to the order and its stock, late-payment rule from ADR 0008. See ADR 0018. Never run against real Paystack yet. Refunds, expiry cancelling and staff screens for mismatched or duplicate payments not built.
+
+## Unpaid order expiry and order look-up
+- Unpaid orders are cancelled after a grace period (24h online, 72h awaiting quote or unconfirmed pay on delivery) and their stock freed, hourly by Celery beat. Customers can look an order up with its reference and phone number. See ADR 0019. Needs the beat schedule line added to base.py (see the apply steps). Refunds and customer notifications not built yet.

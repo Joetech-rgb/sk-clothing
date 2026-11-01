@@ -83,6 +83,11 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.identity.tasks.purge_old_login_codes",
         "schedule": 86400.0,
     },
+    # Unpaid orders are cancelled after their grace period and their stock is freed. Runs hourly.
+    "cancel-stale-orders": {
+        "task": "apps.orders.tasks.cancel_stale_orders",
+        "schedule": 3600.0,
+    },
 }
 
 # The cache is a separate Redis from the Celery broker: the broker must never evict queued
