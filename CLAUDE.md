@@ -8,12 +8,12 @@ Save this file as `CLAUDE.md` (Claude Code), `AGENTS.md` (other agents) or paste
 
 ## 0. Current state (the human updates this)
 
-- **Current phase:** Phase 0, then Phase 1A launch version (Stage 1)
-- **Current week:** Week 1 (5 to 9 October 2026)
-- **Stage 1 hand-over:** Friday 13 November 2026
+- **Current phase:** Phase 0 (unfinished), Phase 1A (backend mostly built, storefront not started)
+- **Current week:** Week 5 (2 to 6 November 2026)
+- **Stage 1 hand-over:** Friday 13 November 2026 (confirmed)
 - **Test period:** 16 to 30 November 2026 (bug fixes only, feature freeze)
-- **Active tasks:** see `docs/PROGRESS.md`
-- **Cut line status:** nothing cut yet
+- **Active tasks:** see `docs/PROGRESS.md`, `docs/AUDIT-2026-11-02.md` and `docs/AGENTS-WORK-SPLIT.md`
+- **Cut line status:** thin launch path only. Deferred: filters, home-page polish, email login, Google sign-in, bulk import, refund staff screens, PWA extras
 
 If this section and `docs/PROGRESS.md` disagree, stop and ask.
 
@@ -304,7 +304,7 @@ If you notice an error in this file or in the earlier plan, say so with evidence
 Known items awaiting the client. Do not assume answers.
 - Delivery fee settings: base fee, rate per km, minimum fee, maximum distance, and the shop location.
 - Station list and fee per station.
-- SMS provider (quotes pending). Build against the `SmsProvider` interface until chosen.
+- SMS provider: **Africa's Talking (decided)**. Sender ID approval pending. Use the fake provider locally and the Africa's Talking sandbox in staging. Email provider (Resend or Brevo) still undecided.
 - Product list or Excel, and the return window per product type.
 - Whether WhatsApp coexistence is supported for Ghana numbers (Phase 6).
 - VPS plan size (processor, memory, disk).

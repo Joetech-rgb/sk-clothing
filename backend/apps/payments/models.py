@@ -130,6 +130,9 @@ class RefundEvent(models.Model):
     class Meta:
         ordering = ["id"]
 
+    def __str__(self) -> str:
+        return f"{self.kind} (refund {self.refund_id})"
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ImmutableError("history rows cannot be changed")

@@ -120,6 +120,9 @@ class SubOrder(models.Model):
     vendor_id = models.BigIntegerField(null=True, blank=True)  # null: sold by S.K itself
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def __str__(self) -> str:
+        return f"sub-order {self.pk}"
+
 
 class OrderLine(AppendOnlyModel):
     """Everything on a line is frozen when the order is created."""
@@ -149,6 +152,9 @@ class OrderLine(AppendOnlyModel):
             ),
         ]
 
+    def __str__(self) -> str:
+        return f"line {self.pk}"
+
 
 class OrderEvent(AppendOnlyModel):
     """The history of an order. One row per real state change, plus one for creation."""
@@ -162,6 +168,9 @@ class OrderEvent(AppendOnlyModel):
 
     class Meta:
         ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.event} (order {self.order_id})"
 
 
 class OrderReservation(AppendOnlyModel):
@@ -181,3 +190,6 @@ class OrderReservation(AppendOnlyModel):
                 condition=Q(quantity__gte=1), name="orderreservation_quantity_min_1"
             ),
         ]
+
+    def __str__(self) -> str:
+        return f"reservation {self.reservation_id}"

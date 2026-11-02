@@ -22,13 +22,13 @@ class Station(models.Model):
     class Meta:
         ordering = ["name"]
 
+    def __str__(self) -> str:
+        return self.name
+
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.name = " ".join(self.name.split())
         self.name_key = normalise_station_name(self.name)
         super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return self.name
 
 
 class DeliverySettings(models.Model):
@@ -58,9 +58,9 @@ class DeliverySettings(models.Model):
             ),
         ]
 
+    def __str__(self) -> str:
+        return "Delivery settings"
+
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.pk = 1
         super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return "Delivery settings"
