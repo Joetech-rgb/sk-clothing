@@ -53,12 +53,25 @@ class VerifyResult:
     reference: str
 
 
+@dataclass(frozen=True)
+class RefundAnswer:
+    refund_id: str
+    status: str  # Paystack's word: pending, processing, processed, failed, needs-attention
+    amount: int | None  # whole pesewas
+
+
 class PaystackClient(Protocol):
     def initialize(
         self, *, email: str, amount_pesewas: int, reference: str, callback_url: str | None = None
     ) -> InitResult: ...
 
     def verify(self, reference: str) -> VerifyResult: ...
+
+    def create_refund(
+        self, *, transaction_reference: str, amount_pesewas: int, currency: str, merchant_note: str
+    ) -> RefundAnswer: ...
+
+    def fetch_refund(self, refund_id: str) -> RefundAnswer: ...
 
 
 @dataclass
@@ -70,6 +83,50 @@ class FakePaystack:
     outcomes: dict[str, "VerifyResult | Exception"] = field(default_factory=dict)
     verify_calls: list[str] = field(default_factory=list)
     fail_initialize: Exception | None = None
+    refunds: dict[str, dict] = field(default_factory=dict)  # by transaction reference
+    refund_calls: list[dict] = field(default_factory=list)
+    fail_refund_create: Exception | None = None  # raised before anything is created
+    create_then_fail: Exception | None = None  # the refund IS created, then the call "fails"
+    fail_refund_fetch: Exception | None = None
+
+    def create_refund(
+        self, *, transaction_reference: str, amount_pesewas: int, currency: str, merchant_note: str
+    ) -> RefundAnswer:
+        self.refund_calls.append(
+            {"transaction": transaction_reference, "amount": amount_pesewas, "currency": currency}
+        )
+        if self.fail_refund_create is not None:
+            raise self.fail_refund_create
+        paid = self.initialized.get(transaction_reference)
+        if paid is None:
+            raise PaystackError("transaction not found", retryable=False)
+        already = sum(
+            r["amount"] for r in self.refunds.values() if r["transaction"] == transaction_reference
+        )
+        if already + amount_pesewas > paid["amount"]:  # Paystack never refunds more than was paid
+            raise PaystackError("refund exceeds the transaction", retryable=False)
+        refund_id = f"rf_{len(self.refunds) + 1}"
+        self.refunds[refund_id] = {
+            "transaction": transaction_reference,
+            "amount": amount_pesewas,
+            "status": "pending",
+        }
+        if self.create_then_fail is not None:
+            raise self.create_then_fail
+        return RefundAnswer(refund_id, "pending", amount_pesewas)
+
+    def set_refund_status(self, transaction_reference: str, status: str) -> None:
+        for refund in self.refunds.values():
+            if refund["transaction"] == transaction_reference:
+                refund["status"] = status
+
+    def fetch_refund(self, refund_id: str) -> RefundAnswer:
+        if self.fail_refund_fetch is not None:
+            raise self.fail_refund_fetch
+        refund = self.refunds.get(refund_id)
+        if refund is None:
+            raise PaystackError("refund not found", retryable=False)
+        return RefundAnswer(refund_id, refund["status"], refund["amount"])
 
     def initialize(
         self, *, email: str, amount_pesewas: int, reference: str, callback_url: str | None = None
@@ -122,6 +179,9 @@ def reset_fake_paystack() -> None:
     _fake.outcomes.clear()
     _fake.verify_calls.clear()
     _fake.fail_initialize = None
+    _fake.refunds.clear()
+    _fake.refund_calls.clear()
+    _fake.fail_refund_create = _fake.create_then_fail = _fake.fail_refund_fetch = None
 
 
 class PaystackHttpClient:
@@ -197,6 +257,31 @@ class PaystackHttpClient:
             amount=amount,
             currency=str(data.get("currency") or ""),
             reference=str(data.get("reference") or ""),
+        )
+
+    def _refund_answer(self, data: dict) -> RefundAnswer:
+        refund_id, status = data.get("id"), data.get("status")
+        if isinstance(refund_id, bool) or not isinstance(refund_id, int | str) or not status:
+            raise PaystackError("Paystack sent an unexpected answer", retryable=True)
+        amount = data.get("amount")
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            amount = None
+        return RefundAnswer(str(refund_id), str(status), amount)
+
+    def create_refund(
+        self, *, transaction_reference: str, amount_pesewas: int, currency: str, merchant_note: str
+    ) -> RefundAnswer:
+        body = {
+            "transaction": transaction_reference,
+            "amount": amount_pesewas,  # always stated, so a repeat can never refund more than paid
+            "currency": currency,
+            "merchant_note": merchant_note,
+        }
+        return self._refund_answer(self._call("POST", "/refund", body))
+
+    def fetch_refund(self, refund_id: str) -> RefundAnswer:
+        return self._refund_answer(
+            self._call("GET", f"/refund/{urllib.parse.quote(refund_id, safe='')}")
         )
 
 

@@ -78,3 +78,6 @@
 
 ## Unpaid order expiry and order look-up
 - Unpaid orders are cancelled after a grace period (24h online, 72h awaiting quote or unconfirmed pay on delivery) and their stock freed, hourly by Celery beat. Customers can look an order up with its reference and phone number. See ADR 0019. Needs the beat schedule line added to base.py (see the apply steps). Refunds and customer notifications not built yet.
+
+## Refunds
+- Refunds are created, sent to Paystack once, followed up by polling, retried with pauses, and handed to a person when they cannot be delivered; staff can record a refund made outside the system. See ADR 0020. Needs two beat schedule lines in base.py. Never run against real Paystack. Customer notification and a staff retry button not built.

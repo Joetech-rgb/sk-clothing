@@ -19,7 +19,7 @@ from apps.inventory.errors import InsufficientStock, ReservationNotActive
 
 from .models import Order, OrderReservation
 from .services import transition
-from .states import Event, Fulfilment, InvalidTransition, Payment
+from .states import Event, Fulfilment, InvalidTransition, Payment, Refund
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,15 @@ def order_summary(order_id: int) -> dict | None:
         "fulfilment_status": order.fulfilment,
         "refund_status": order.refund,
     }
+
+
+def orders_awaiting_refund(limit: int = 200) -> list[int]:
+    """Orders the state machine has asked a refund for and nobody has started yet."""
+    return list(
+        Order.objects.filter(refund=Refund.REQUESTED.value)
+        .order_by("id")
+        .values_list("pk", flat=True)[:limit]
+    )
 
 
 def mark_payment_failed(order_id: int) -> bool:

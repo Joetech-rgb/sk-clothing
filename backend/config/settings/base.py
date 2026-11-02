@@ -88,6 +88,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.orders.tasks.cancel_stale_orders",
         "schedule": 3600.0,
     },
+    # Refunds are created, sent to Paystack and followed up. Runs every minute.
+    "process-refunds": {
+        "task": "apps.payments.tasks.process_refunds",
+        "schedule": 60.0,
+    },
+    # Refunds still unresolved after 24 hours raise an alarm. Runs hourly.
+    "check-overdue-refunds": {
+        "task": "apps.payments.tasks.check_overdue_refunds",
+        "schedule": 3600.0,
+    },
 }
 
 # The cache is a separate Redis from the Celery broker: the broker must never evict queued

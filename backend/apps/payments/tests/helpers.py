@@ -93,3 +93,23 @@ def holds_status(order_reference):
 
 def fake():
     return fake_paystack()
+
+
+def paid_order(shop, items=None, **kwargs):
+    """An order paid in full. Returns (order JSON, payment reference)."""
+    order = place_order(items or [(shop.shirt, 2)], **kwargs)
+    reference = start_ok(order["reference"])
+    assert verify_page(reference).json()["outcome"] == "paid"
+    return order, reference
+
+
+def refund_requested_order(shop, phone="0241230001"):
+    """A late payer who found the last unit gone: paid, not fulfillable, refund requested.
+    Returns (order JSON, payment reference)."""
+    order = place_order([(shop.scarce, 1)], phone=phone)
+    reference = start_ok(order["reference"])
+    expire_holds(order["reference"])
+    place_order([(shop.scarce, 1)], phone="0249990000")  # takes the freed unit
+    assert verify_page(reference).json()["outcome"] == "paid_not_fulfillable"
+    assert order_row(order["reference"]).refund == "requested"
+    return order, reference
