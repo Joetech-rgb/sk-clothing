@@ -6,8 +6,7 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 DEBUG = False
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost").split(",")
 
-# Only payments is registered so far (Phase 0 webhook). Register each other app under
-# backend/apps when its phase starts.
+# Register each app under backend/apps here only when its phase starts.
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -15,13 +14,30 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",
     "rest_framework",
     "drf_spectacular",
     "simple_history",
+    "apps.identity",
     "apps.payments",
+    "apps.catalog",
+    "apps.inventory",
+    "apps.delivery",
+    "apps.orders",
 ]
 
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+
+# Chosen before any real database exists, because changing it later means rewriting live data.
+AUTH_USER_MODEL = "identity.User"
+
 MIDDLEWARE = [
+    "config.middleware.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -56,8 +72,91 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 CELERY_TIMEZONE = "Africa/Accra"
-REST_FRAMEWORK = {"DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema"}
+CELERY_BEAT_SCHEDULE = {
+    # Stock held for a checkout is released after 15 minutes. Runs every minute.
+    "expire-stock-reservations": {
+        "task": "apps.inventory.tasks.expire_reservations",
+        "schedule": 60.0,
+    },
+    # Login codes older than a week are deleted. Runs once a day.
+    "purge-old-login-codes": {
+        "task": "apps.identity.tasks.purge_old_login_codes",
+        "schedule": 86400.0,
+    },
+    # Unpaid orders are cancelled after their grace period and their stock is freed. Runs hourly.
+    "cancel-stale-orders": {
+        "task": "apps.orders.tasks.cancel_stale_orders",
+        "schedule": 3600.0,
+    },
+    # Refunds are created, sent to Paystack and followed up. Runs every minute.
+    "process-refunds": {
+        "task": "apps.payments.tasks.process_refunds",
+        "schedule": 60.0,
+    },
+    # Refunds still unresolved after 24 hours raise an alarm. Runs hourly.
+    "check-overdue-refunds": {
+        "task": "apps.payments.tasks.check_overdue_refunds",
+        "schedule": 3600.0,
+    },
+}
+
+# The cache is a separate Redis from the Celery broker: the broker must never evict queued
+# tasks, a cache must be free to (ADR 0009). Throttle counters live here, shared by all workers.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.environ.get("CACHE_URL", "redis://redis:6379/1"),
+    }
+}
+
+# Believe CF-Connecting-IP only when the server accepts traffic from Cloudflare alone.
+TRUST_CLOUDFLARE_HEADERS = os.environ.get("TRUST_CLOUDFLARE_HEADERS", "") == "1"
+
+# Where published product photos are served from (the Cloudflare R2 public domain). Empty in
+# development, so image URLs are plain paths.
+MEDIA_BASE_URL = os.environ.get("MEDIA_BASE_URL", "")
+
+# The search implementation. Phase 1B points this at Meilisearch; no caller changes.
+SEARCH_BACKEND = "apps.catalog.search_pg.PostgresSearch"
+
+# What /api/v1/health/ready/ checks. Tests turn Redis off.
+READINESS_CHECKS = ("database", "redis")
+
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "config.api_errors.api_exception_handler",
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    # Sessions for the website. No Basic auth: it would send the password with every request.
+    "DEFAULT_AUTHENTICATION_CLASSES": ["config.authentication.SessionAuthentication401"],
+    # Secure by default: an endpoint is private unless it says otherwise.
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_THROTTLE_CLASSES": ["config.throttling.AnonThrottle", "config.throttling.UserThrottle"],
+    # Generous on purpose: many phones share one carrier address. Login and payment endpoints
+    # get tighter limits of their own.
+    "DEFAULT_THROTTLE_RATES": {"anon": "300/min", "user": "600/min"},
+}
 SPECTACULAR_SETTINGS = {"TITLE": "S.K Clothing API", "VERSION": "1.0.0"}
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "config.logging_filters.RequestIdFilter"},
+        "redact": {"()": "config.logging_filters.RedactingFilter"},
+    },
+    "formatters": {
+        "plain": {"format": "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"}
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id", "redact"],
+            "formatter": "plain",
+        }
+    },
+    "root": {"handlers": ["console"], "level": os.environ.get("LOG_LEVEL", "INFO")},
+}
 
 # Paystack. Empty means every webhook is rejected (fails closed).
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")

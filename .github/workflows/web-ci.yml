@@ -1,0 +1,60 @@
+name: Web CI
+
+# Checks the storefront and shared packages. It does nothing until web/storefront/package.json
+# exists, so it is safe to merge before the storefront is scaffolded.
+# The root package.json should set "packageManager" so corepack picks the right pnpm version.
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "packages/**", "package.json", "pnpm-workspace.yaml", ".github/workflows/web-ci.yml"]
+  pull_request:
+    paths: ["web/**", "packages/**", "package.json", "pnpm-workspace.yaml", ".github/workflows/web-ci.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is there a storefront yet?
+        id: storefront
+        run: |
+          if [ -f web/storefront/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No web/storefront/package.json yet, so there is nothing to check."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.storefront.outputs.present == 'true'
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        if: steps.storefront.outputs.present == 'true'
+        run: corepack enable
+
+      - name: Install
+        if: steps.storefront.outputs.present == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        if: steps.storefront.outputs.present == 'true'
+        run: pnpm -r --if-present run lint
+
+      - name: Type-check
+        if: steps.storefront.outputs.present == 'true'
+        run: pnpm -r --if-present run typecheck
+
+      - name: Unit tests
+        if: steps.storefront.outputs.present == 'true'
+        run: pnpm -r --if-present run test
+
+      - name: Build
+        if: steps.storefront.outputs.present == 'true'
+        run: pnpm -r --if-present run build
