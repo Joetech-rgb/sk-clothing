@@ -11,6 +11,12 @@ MODULES = ["config.settings.prod", "config.settings.staging"]
 @pytest.fixture(params=MODULES)
 def deployed(request, monkeypatch):
     monkeypatch.delenv("CSRF_TRUSTED_ORIGINS", raising=False)
+    # base.py lists no trusted origin of its own, so give it one: the settings under test
+    # must keep whatever base lists.
+    base = importlib.import_module("config.settings.base")
+    monkeypatch.setattr(
+        base, "CSRF_TRUSTED_ORIGINS", ["https://already-in-base.example"], raising=False
+    )
     return importlib.reload(importlib.import_module(request.param))
 
 

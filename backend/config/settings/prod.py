@@ -2,6 +2,7 @@ import os
 
 import sentry_sdk
 
+from . import base as _base
 from .base import *
 
 sentry_sdk.init(dsn=os.environ.get("SENTRY_DSN", ""), environment="prod")
@@ -16,6 +17,6 @@ CSRF_COOKIE_SAMESITE = "Lax"
 # The storefront's own address (for example https://www.example.com), comma separated, set in
 # the environment. Anything base.py already lists is kept.
 CSRF_TRUSTED_ORIGINS = [
-    *globals().get("CSRF_TRUSTED_ORIGINS", []),
+    *getattr(_base, "CSRF_TRUSTED_ORIGINS", []),
     *[o.strip() for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()],
 ]
