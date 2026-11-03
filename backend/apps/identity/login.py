@@ -269,7 +269,7 @@ def verify_code(raw_phone: str, submitted: str, *, now: datetime | None = None) 
         user, created = _customer(phone)
         if user is None:
             return VerifyResult(INVALID)
-        return VerifyResult(OK, user.pk, created)
+        return VerifyResult(OK, user.pk, created)  # type: ignore[attr-defined]
 
 
 def purge_old_login_codes(

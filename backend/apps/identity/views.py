@@ -84,7 +84,7 @@ class VerifyCodeView(_SessionView):
         result = login.verify_code(body.validated_data["phone"], body.validated_data["code"])
         if result.status == login.LOCKED:
             raise TooManyAttempts
-        if result.status != login.OK:
+        if result.status != login.OK or result.user_id is None:
             raise InvalidCode
         user = get_user_model().objects.get(pk=result.user_id)
         # login() starts a fresh session key (and rotates the CSRF token), so a session id that

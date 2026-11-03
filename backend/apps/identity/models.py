@@ -7,7 +7,7 @@ is unique when present. Email is stored in lower case so "A@x.com" and "a@x.com"
 Phone numbers are stored as E.164 (+233...), normalised by the manager.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -16,7 +16,7 @@ from django.utils import timezone
 from .phone import normalise_ghana_phone
 
 
-class UserManager(BaseUserManager):
+class UserManager(BaseUserManager["User"]):
     use_in_migrations = False
 
     def _create(
@@ -58,8 +58,10 @@ class UserManager(BaseUserManager):
             raise ValueError("a superuser must have is_staff and is_superuser set")
         return self._create(email, extra.pop("phone", None), password, **extra)
 
-    def get_by_natural_key(self, username: str) -> "User":
+    def get_by_natural_key(self, username: str | None) -> "User":
         """Log in by email, ignoring case and stray spaces."""
+        if username is None:
+            raise self.model.DoesNotExist("no username given")
         return self.get(email=username.strip().lower())
 
 
@@ -74,7 +76,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS: list[str] = []
+    REQUIRED_FIELDS: ClassVar[list[str]] = []
 
     class Meta:
         constraints = [

@@ -6,6 +6,7 @@ the customer, who may be absent (guest checkout).
 """
 
 import secrets
+from enum import Enum
 
 from django.conf import settings
 from django.db import models
@@ -20,7 +21,7 @@ def new_reference() -> str:
     return "SK" + "".join(secrets.choice(_REFERENCE_ALPHABET) for _ in range(10))
 
 
-def _choices(enum_class: type) -> list[tuple[str, str]]:
+def _choices(enum_class: type[Enum]) -> list[tuple[str, str]]:
     return [(member.value, member.value) for member in enum_class]
 
 

@@ -232,6 +232,11 @@ def checkout(
         details["road_km"] = str(quote.road_km)
     lines = _line_inputs(priced, variant_labels([line.variant_id for line in priced]))
 
+    quote_fee_pesewas: int | None = None
+    if not awaiting:
+        assert quote.fee is not None  # only an awaiting-quote order has no fee
+        quote_fee_pesewas = quote.fee.pesewas
+
     try:
         with transaction.atomic():
             _lock_phone(request.contact_phone)
@@ -250,7 +255,7 @@ def checkout(
                 idempotency_key=key,
                 lines=lines,
                 delivery_method=request.delivery_method,
-                delivery_fee_pesewas=None if awaiting else quote.fee.pesewas,
+                delivery_fee_pesewas=quote_fee_pesewas,
                 cod=request.pay_on_delivery,
                 awaiting_quote=awaiting,
                 pickup=request.delivery_method == PICKUP,

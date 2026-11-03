@@ -25,7 +25,7 @@ class StaffUserCreationForm(BaseUserCreationForm):
 
 
 class StaffUserChangeForm(UserChangeForm):
-    class Meta(UserChangeForm.Meta):
+    class Meta(UserChangeForm.Meta):  # type: ignore[name-defined]
         model = User
 
     def clean_phone(self) -> str | None:

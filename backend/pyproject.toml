@@ -17,6 +17,10 @@ plugins = ["mypy_django_plugin.main"]
 module = ["celery", "celery.*", "rest_framework", "rest_framework.*", "drf_spectacular", "drf_spectacular.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["*.migrations.*"]
+ignore_errors = true
+
 [tool.django-stubs]
 django_settings_module = "config.settings.local"
 

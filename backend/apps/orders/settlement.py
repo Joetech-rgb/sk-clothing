@@ -55,7 +55,7 @@ def payable_order(reference: str) -> PayableOrder:
     order = Order.objects.filter(reference=reference).first()
     if order is None:
         raise OrderNotFound
-    if order.delivery_fee_pesewas is None:
+    if order.delivery_fee_pesewas is None or order.total_pesewas is None:
         raise NotPayable("awaiting_quote")
     if order.payment in (Payment.COD_PENDING.value, Payment.COD_CONFIRMED.value):
         raise NotPayable("pay_on_delivery")
@@ -105,7 +105,7 @@ def _sell_again(order: Order) -> str:
     and sell it. Returns PAID or PAID_NOT_FULFILLABLE. All inside the caller's transaction."""
     holds = list(order.reservations.all())
     inventory.release([hold.reservation_id for hold in holds])
-    wanted = {}
+    wanted: dict[int, int] = {}
     for hold in holds:
         wanted[hold.variant_id] = wanted.get(hold.variant_id, 0) + hold.quantity
     try:
