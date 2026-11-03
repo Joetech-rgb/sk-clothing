@@ -37,8 +37,8 @@
 16. Staff two-factor: which library? Agent B to send a dependency proposal.
 17. Are refunds and `orders/pickup.py` approved as in scope?
 18. Wording of customer messages (order confirmation, delivery code, pickup reminder). Agent B drafts, human approves.
-19. ADR 0015 is missing (numbering jumps from 0014 to 0016). Agent A to find it or explain.
-20. A file named `pace written by cmd echo (fixes ruff I001)` is tracked in the repo root. Agent A to read it and remove it.
+19. ADR 0015 is on a separate feature-flags branch (commits a763b4b and d1c42e2), not on refunds. Agent A to list all unmerged branches and the human to decide whether to merge them after PR #3.
+20. A file named `pace written by cmd echo (fixes ruff I001)` is tracked in the repo root. Read on 2 November: it is `less` help text from a mistaken redirect, no code. Agent A to remove it in its own commit.
 
 ## Active tasks
 - [x] PR 1: repo skeleton and docs (merged to main, GitHub remote exists)
@@ -49,7 +49,7 @@
 - [ ] Green CI on PR #3, then merge with a merge commit (not squash)
 - [ ] Remove the stray root file after reading it; add docs/AUDIT-2026-11-02.md and docs/agents/
 - [ ] Explain ADR 0015
-- [ ] Confirm and complete the Celery beat schedule (expiry, refunds, login-code purge)
+- [x] Celery beat schedule: all five jobs are present in base.py (verified 2 November). Still to add: a test that fails if one is removed.
 - [ ] Staging deploy from a merge to main
 - [ ] Backups and restore drill (never cut)
 - [ ] Sentry alerts, uptime monitor, Cloudflare
@@ -122,7 +122,7 @@
 - Start a payment, confirm it with Paystack verify (webhook and return page), apply it to the order and its stock, late-payment rule from ADR 0008. See ADR 0018. Never run against real Paystack yet. Refunds, expiry cancelling and staff screens for mismatched or duplicate payments not built.
 
 ## Unpaid order expiry and order look-up
-- Unpaid orders are cancelled after a grace period (24h online, 72h awaiting quote or unconfirmed pay on delivery) and their stock freed, hourly by Celery beat. Customers can look an order up with its reference and phone number. See ADR 0019. Needs the beat schedule line added to base.py (see the apply steps). Refunds and customer notifications not built yet.
+- Unpaid orders are cancelled after a grace period (24h online, 72h awaiting quote or unconfirmed pay on delivery) and their stock freed, hourly by Celery beat. Customers can look an order up with its reference and phone number. See ADR 0019. The beat schedule line is in base.py. Refunds are built (see Refunds below). Customer notifications are not built yet.
 
 ## Refunds
-- Refunds are created, sent to Paystack once, followed up by polling, retried with pauses, and handed to a person when they cannot be delivered; staff can record a refund made outside the system. See ADR 0020. Needs two beat schedule lines in base.py. Never run against real Paystack. Customer notification and a staff retry button not built.
+- Refunds are created, sent to Paystack once, followed up by polling, retried with pauses, and handed to a person when they cannot be delivered; staff can record a refund made outside the system. See ADR 0020. The two beat schedule lines are in base.py. Never run against real Paystack. Customer notification and a staff retry button not built.
