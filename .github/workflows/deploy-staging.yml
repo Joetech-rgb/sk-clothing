@@ -1,0 +1,82 @@
+name: Deploy staging
+
+# Deploys the backend to the staging server after CI passes on main, or when started by hand from
+# main. It does nothing until the repository variable STAGING_DEPLOY_ENABLED is set to "true".
+# Setup steps are in docs/runbooks/OPERATIONS.md. No third-party actions are used: the job only
+# opens an SSH connection and runs infra/deploy/deploy.sh on the server.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      vars.STAGING_DEPLOY_ENABLED == 'true' && (
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push')
+      )
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 25
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      HOST: ${{ secrets.STAGING_HOST }}
+      SSH_USER: ${{ secrets.STAGING_USER }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+      SSH_PORT: ${{ secrets.STAGING_SSH_PORT || '22' }}
+      STAGING_PATH: ${{ vars.STAGING_PATH }}
+      STAGING_HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
+      STAGING_COMPOSE_FILE: ${{ vars.STAGING_COMPOSE_FILE || 'docker-compose.yml' }}
+      STAGING_APP_SERVICE: ${{ vars.STAGING_APP_SERVICE || 'backend' }}
+      STAGING_DB_SERVICE: ${{ vars.STAGING_DB_SERVICE || 'db' }}
+    steps:
+      - name: Check the configuration
+        run: |
+          missing=0
+          for name in HOST SSH_USER SSH_KEY KNOWN_HOSTS STAGING_PATH STAGING_HEALTH_URL; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::not a commit id"; exit 1; }
+          [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "::error::odd STAGING_HOST"; exit 1; }
+          [[ "$SSH_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo "::error::odd STAGING_USER"; exit 1; }
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "::error::odd STAGING_SSH_PORT"; exit 1; }
+          [[ "$STAGING_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "::error::odd STAGING_PATH"; exit 1; }
+          [[ "$STAGING_HEALTH_URL" =~ ^https://[A-Za-z0-9._~:/?\&=%-]+$ ]] \
+            || { echo "::error::STAGING_HEALTH_URL must be an https address"; exit 1; }
+          [[ "$STAGING_COMPOSE_FILE" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::odd compose file"; exit 1; }
+          [[ "$STAGING_APP_SERVICE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::odd app service"; exit 1; }
+          [[ "$STAGING_DB_SERVICE" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::odd db service"; exit 1; }
+
+      - name: Set up SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy on the server
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -p "$SSH_PORT" "$SSH_USER@$HOST" \
+            "set -e; cd '$STAGING_PATH'; git fetch --prune origin; git checkout --detach '$SHA'; \
+             COMPOSE_FILE='$STAGING_COMPOSE_FILE' APP_SERVICE='$STAGING_APP_SERVICE' \
+             DB_SERVICE='$STAGING_DB_SERVICE' HEALTH_URL='$STAGING_HEALTH_URL' \
+             bash infra/deploy/deploy.sh '$SHA'"
+
+      - name: Check from outside
+        run: curl -fsS --max-time 15 --retry 3 --retry-delay 5 "$STAGING_HEALTH_URL" > /dev/null
