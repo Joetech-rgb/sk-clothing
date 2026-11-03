@@ -29,7 +29,7 @@ from django.utils import timezone
 from apps.messaging.factory import ProviderNotConfigured, get_sms_provider
 
 from . import otp
-from .models import LoginCode, SmsDailyCount
+from .models import LoginCode, SmsDailyCount, User
 from .phone import mask_phone, normalise_ghana_phone
 
 logger = logging.getLogger(__name__)
@@ -215,10 +215,10 @@ def request_code(raw_phone: str, *, now: datetime | None = None) -> bool:
     return True
 
 
-def _customer(phone: str) -> tuple["object | None", bool]:
+def _customer(phone: str) -> tuple[User | None, bool]:
     """The customer for this number, creating one if needed. None if the account is not allowed
     to use phone login. Safe if two requests create the same customer at once."""
-    users = get_user_model().objects
+    users = User.objects
     created = False
     user = users.filter(phone=phone).first()
     if user is None:
@@ -269,7 +269,7 @@ def verify_code(raw_phone: str, submitted: str, *, now: datetime | None = None) 
         user, created = _customer(phone)
         if user is None:
             return VerifyResult(INVALID)
-        return VerifyResult(OK, user.pk, created)  # type: ignore[attr-defined]
+        return VerifyResult(OK, user.pk, created)
 
 
 def purge_old_login_codes(
