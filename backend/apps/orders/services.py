@@ -217,3 +217,20 @@ def confirm_delivery(reference: str, submitted: str, *, actor: str) -> ConfirmRe
             return ConfirmResult(DELIVERED_OK, order.delivered_at)
     except InvalidTransition:  # raised inside the block, so nothing above was kept
         return ConfirmResult(NOT_OUT_FOR_DELIVERY)
+
+
+def mark_packed(order_id: int, *, actor: str) -> Transition:
+    """Staff finished packing an order that is paid (or confirmed for pay on delivery)."""
+    return transition(order_id, Event.PACKED, actor=actor)
+
+
+def dispatch_order(order_id: int, *, actor: str) -> str:
+    """Send a packed delivery order out and issue its delivery code, in one transaction.
+
+    Returns the code so the caller can send it. Never log it. Repeating this is safe: the order
+    does not move twice and the same code comes back. Raises InvalidTransition for a pickup
+    order, an order that is not packed, or one that is already delivered.
+    """
+    with transaction.atomic():
+        transition(order_id, Event.DISPATCHED, actor=actor)
+        return delivery_codes.issue_delivery_code(order_id, actor=actor)
