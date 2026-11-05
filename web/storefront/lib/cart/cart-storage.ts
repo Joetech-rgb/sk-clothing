@@ -1,8 +1,8 @@
 import { addLine, EMPTY_CART } from "./cart";
 import type { Cart, CartLine } from "./cart";
 
-export const CART_STORAGE_KEY = "sk.cart.v1";
-const VERSION = 1;
+export const CART_STORAGE_KEY = "sk.cart.v2";
+const VERSION = 2;
 
 /** The small part of the Storage API we use, so tests need no browser. */
 export interface KeyValueStorage {
@@ -25,14 +25,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1;
+}
+
 function toLine(value: unknown): CartLine | null {
   if (!isRecord(value)) return null;
   const { productSlug, variantId, quantity } = value;
   if (typeof productSlug !== "string" || productSlug === "") return null;
-  if (typeof variantId !== "string" || variantId === "") return null;
-  if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1) {
-    return null;
-  }
+  if (!isPositiveInteger(variantId)) return null;
+  if (!isPositiveInteger(quantity)) return null;
   return { productSlug, variantId, quantity };
 }
 

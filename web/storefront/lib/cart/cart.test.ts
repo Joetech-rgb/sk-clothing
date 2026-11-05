@@ -9,8 +9,8 @@ import {
 } from "./cart";
 import type { Cart, CartLine } from "./cart";
 
-const red: CartLine = { productSlug: "tee", variantId: "v-red", quantity: 2 };
-const blue: CartLine = { productSlug: "tee", variantId: "v-blue", quantity: 3 };
+const red: CartLine = { productSlug: "tee", variantId: 1, quantity: 2 };
+const blue: CartLine = { productSlug: "tee", variantId: 2, quantity: 3 };
 
 describe("addLine", () => {
   it("adds a new line", () => {
@@ -40,26 +40,26 @@ describe("addLine", () => {
 
 describe("setQuantity", () => {
   it("sets a new quantity", () => {
-    expect(setQuantity([red], "v-red", 9)).toEqual([{ ...red, quantity: 9 }]);
+    expect(setQuantity([red], 1, 9)).toEqual([{ ...red, quantity: 9 }]);
   });
 
   it("removes the line at zero", () => {
-    expect(setQuantity([red, blue], "v-red", 0)).toEqual([blue]);
+    expect(setQuantity([red, blue], 1, 0)).toEqual([blue]);
   });
 
   it("leaves the cart unchanged for an unknown variant", () => {
     const cart: Cart = [red];
-    expect(setQuantity(cart, "nope", 4)).toBe(cart);
+    expect(setQuantity(cart, 999, 4)).toBe(cart);
   });
 
   it.each([-1, 2.5, Number.NaN])("rejects quantity %s", (quantity) => {
-    expect(() => setQuantity([red], "v-red", quantity)).toThrow(RangeError);
+    expect(() => setQuantity([red], 1, quantity)).toThrow(RangeError);
   });
 });
 
 describe("removeLine, clearCart and totalQuantity", () => {
   it("removes one line", () => {
-    expect(removeLine([red, blue], "v-blue")).toEqual([red]);
+    expect(removeLine([red, blue], 2)).toEqual([red]);
   });
 
   it("clears the cart", () => {

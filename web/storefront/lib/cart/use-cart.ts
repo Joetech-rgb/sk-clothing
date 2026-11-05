@@ -68,12 +68,12 @@ export function useCart() {
 
   const add = useCallback((line: CartLine) => update(addLine(snapshot, line)), []);
   const setQuantity = useCallback(
-    (variantId: string, quantity: number) =>
+    (variantId: number, quantity: number) =>
       update(setLineQuantity(snapshot, variantId, quantity)),
     [],
   );
   const remove = useCallback(
-    (variantId: string) => update(removeLine(snapshot, variantId)),
+    (variantId: number) => update(removeLine(snapshot, variantId)),
     [],
   );
   const clear = useCallback(() => update(clearCart()), []);

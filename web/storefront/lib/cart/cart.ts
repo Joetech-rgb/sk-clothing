@@ -3,12 +3,12 @@
  * a price, a tier, a fee or a stock figure: every price shown comes from the
  * server (CLAUDE.md section 4). All functions are pure and never mutate input.
  *
- * Identifier types are provisional until the OpenAPI snapshot arrives.
+ * variantId is the integer id the backend uses (POST /api/v1/catalog/price/).
  */
 
 export interface CartLine {
   productSlug: string;
-  variantId: string;
+  variantId: number;
   quantity: number;
 }
 
@@ -37,7 +37,7 @@ export function addLine(cart: Cart, line: CartLine): Cart {
 }
 
 /** Set a line's quantity. Zero removes it. An unknown variant leaves the cart unchanged. */
-export function setQuantity(cart: Cart, variantId: string, quantity: number): Cart {
+export function setQuantity(cart: Cart, variantId: number, quantity: number): Cart {
   assertWholeNumber(quantity, 0);
   if (!cart.some((l) => l.variantId === variantId)) {
     return cart;
@@ -48,7 +48,7 @@ export function setQuantity(cart: Cart, variantId: string, quantity: number): Ca
   return cart.map((l) => (l.variantId === variantId ? { ...l, quantity } : l));
 }
 
-export function removeLine(cart: Cart, variantId: string): Cart {
+export function removeLine(cart: Cart, variantId: number): Cart {
   return cart.filter((l) => l.variantId !== variantId);
 }
 

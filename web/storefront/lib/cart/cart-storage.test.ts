@@ -10,8 +10,8 @@ import {
 import type { KeyValueStorage } from "./cart-storage";
 
 const cart: Cart = [
-  { productSlug: "tee", variantId: "v-red", quantity: 2 },
-  { productSlug: "tee", variantId: "v-blue", quantity: 3 },
+  { productSlug: "tee", variantId: 1, quantity: 2 },
+  { productSlug: "tee", variantId: 2, quantity: 3 },
 ];
 
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage {
@@ -53,45 +53,48 @@ describe("serialize and parse", () => {
   it("gives an empty cart for missing, broken or wrong-version data", () => {
     expect(parseCart(null)).toEqual([]);
     expect(parseCart("not json")).toEqual([]);
-    expect(parseCart(JSON.stringify({ version: 2, lines: [] }))).toEqual([]);
-    expect(parseCart(JSON.stringify({ version: 1, lines: "x" }))).toEqual([]);
+    expect(parseCart(JSON.stringify({ version: 1, lines: [] }))).toEqual([]);
+    expect(parseCart(JSON.stringify({ version: 2, lines: "x" }))).toEqual([]);
     expect(parseCart(JSON.stringify([1, 2]))).toEqual([]);
   });
 
   it("drops invalid lines and keeps valid ones", () => {
     const raw = JSON.stringify({
-      version: 1,
+      version: 2,
       lines: [
-        { productSlug: "tee", variantId: "v1", quantity: 1 },
-        { productSlug: "tee", variantId: "v2", quantity: 0 },
-        { productSlug: "tee", variantId: "v3", quantity: -4 },
-        { productSlug: "tee", variantId: "v4", quantity: "2" },
-        { productSlug: "", variantId: "v5", quantity: 1 },
-        { variantId: "v6", quantity: 1 },
+        { productSlug: "tee", variantId: 1, quantity: 1 },
+        { productSlug: "tee", variantId: 2, quantity: 0 },
+        { productSlug: "tee", variantId: 3, quantity: -4 },
+        { productSlug: "tee", variantId: 4, quantity: "2" },
+        { productSlug: "tee", variantId: "7", quantity: 1 },
+        { productSlug: "tee", variantId: 1.5, quantity: 1 },
+        { productSlug: "tee", variantId: 0, quantity: 1 },
+        { productSlug: "", variantId: 5, quantity: 1 },
+        { variantId: 6, quantity: 1 },
         null,
         "junk",
       ],
     });
-    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: "v1", quantity: 1 }]);
+    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: 1, quantity: 1 }]);
   });
 
   it("discards extra fields such as a stale price", () => {
     const raw = JSON.stringify({
-      version: 1,
-      lines: [{ productSlug: "tee", variantId: "v1", quantity: 1, price: 100 }],
+      version: 2,
+      lines: [{ productSlug: "tee", variantId: 1, quantity: 1, price: 100 }],
     });
-    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: "v1", quantity: 1 }]);
+    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: 1, quantity: 1 }]);
   });
 
   it("merges duplicate variants found in storage", () => {
     const raw = JSON.stringify({
-      version: 1,
+      version: 2,
       lines: [
-        { productSlug: "tee", variantId: "v1", quantity: 1 },
-        { productSlug: "tee", variantId: "v1", quantity: 2 },
+        { productSlug: "tee", variantId: 1, quantity: 1 },
+        { productSlug: "tee", variantId: 1, quantity: 2 },
       ],
     });
-    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: "v1", quantity: 3 }]);
+    expect(parseCart(raw)).toEqual([{ productSlug: "tee", variantId: 1, quantity: 3 }]);
   });
 });
 
