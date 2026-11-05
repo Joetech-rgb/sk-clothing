@@ -43,7 +43,12 @@ def fake_provider(settings):
 
 def queue(key="k1", **kwargs):
     return services.queue_sms(
-        to_e164=PHONE, text=SECRET_TEXT, template="test", idempotency_key=key, enqueue=False, **kwargs
+        to_e164=PHONE,
+        text=SECRET_TEXT,
+        template="test",
+        idempotency_key=key,
+        enqueue=False,
+        **kwargs,
     )
 
 
@@ -118,7 +123,9 @@ def test_a_provider_that_raises_is_retried_and_leaks_nothing_to_the_log(monkeypa
     message, _ = queue()
     with caplog.at_level(logging.DEBUG):
         assert services.deliver(message.pk) == "pending"
-    assert PHONE not in caplog.text and SECRET_TEXT not in caplog.text and "123456" not in caplog.text
+    assert PHONE not in caplog.text
+    assert SECRET_TEXT not in caplog.text
+    assert "123456" not in caplog.text
     message.refresh_from_db()
     assert message.last_error == "provider_exception"
 
