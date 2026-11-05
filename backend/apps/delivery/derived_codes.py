@@ -15,7 +15,7 @@ import hmac
 import secrets
 from dataclasses import dataclass, replace
 
-from .codes import DIGITS, LOCKED, MALFORMED, MAX_ATTEMPTS, OK, WRONG, _SHAPE
+from .codes import _SHAPE, DIGITS, LOCKED, MALFORMED, MAX_ATTEMPTS, OK, WRONG
 
 _DOMAIN = b"sk-delivery-code-v1"
 

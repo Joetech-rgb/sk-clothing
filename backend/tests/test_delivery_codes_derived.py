@@ -88,8 +88,9 @@ def test_four_wrong_attempts_do_not_lock():
 
 
 def test_input_that_is_not_six_digits_does_not_use_an_attempt():
-    code, state = issue_derived(order_id=ORDER, key=KEY)
-    for junk in ("", "12345", "1234567", "12345a", "abcdef", "12-345", "\uff11\uff12\uff13\uff14\uff15\uff16"):
+    _code, state = issue_derived(order_id=ORDER, key=KEY)
+    fullwidth = "\uff11\uff12\uff13\uff14\uff15\uff16"
+    for junk in ("", "12345", "1234567", "12345a", "abcdef", "12-345", fullwidth):
         new_state, result = check_derived(state, junk, order_id=ORDER, key=KEY)
         assert result == MALFORMED and new_state == state
 
