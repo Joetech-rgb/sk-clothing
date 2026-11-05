@@ -81,6 +81,7 @@ class Order(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)  # set when delivered
 
     class Meta:
         ordering = ["-id"]
