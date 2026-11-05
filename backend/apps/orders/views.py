@@ -6,9 +6,13 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
+from rest_framework.views import APIView
 
+from apps.delivery import code_services as delivery_codes
 from apps.delivery.fees import DOORSTEP, METHODS, STATION
 from apps.identity.origin import check_origin
 from apps.identity.phone import InvalidPhone, normalise_ghana_phone
@@ -17,8 +21,9 @@ from config.presenting import money_json
 from config.public_api import PublicView, uncached
 from config.throttling import AnonThrottle
 
-from . import checkout, lookup
+from . import checkout, lookup, services
 from .models import Order
+from .states import Fulfilment
 from .throttles import CheckoutThrottle, LookupThrottle
 
 KEY_SHAPE = re.compile(r"[A-Za-z0-9_-]{8,64}")
@@ -108,6 +113,14 @@ class CheckoutSerializer(serializers.Serializer):
     payment_method = serializers.ChoiceField(choices=["online", "cod"], default="online")
 
 
+def _delivery_code_fields(order: Order) -> dict:
+    """The delivery code, shown to the customer only while the order is out for delivery."""
+    if order.fulfilment != Fulfilment.OUT_FOR_DELIVERY.value:
+        return {"delivery_code": None, "delivery_code_locked": False}
+    shown = delivery_codes.code_for_display(order.pk)
+    return {"delivery_code": shown.code, "delivery_code_locked": shown.locked}
+
+
 def order_json(order: Order) -> dict:
     """What a customer may see of their order. No keys, internal ids or contact details."""
     fee = order.delivery_fee_pesewas
@@ -134,6 +147,7 @@ def order_json(order: Order) -> dict:
             for line in order.lines.all()
         ],
         "created_at": order.created_at,
+        **_delivery_code_fields(order),
     }
 
 
@@ -236,3 +250,106 @@ class OrderLookupView(PublicView):
         if order is None:
             raise NotFound
         return uncached(Response(order_json(order)))
+
+
+class DeliveryOrderNotFound(Refusal):
+    status_code = 404
+    default_code = "order_not_found"
+    default_detail = "There is no order with that reference."
+    reason = "order_not_found"
+
+
+class WrongDeliveryCode(Refusal):
+    status_code = 400
+    default_code = "wrong_code"
+    default_detail = "That code is not right."
+    reason = "wrong_code"
+
+
+class MalformedDeliveryCode(Refusal):
+    status_code = 400
+    default_code = "malformed_code"
+    default_detail = "Enter the six-digit code."
+    reason = "malformed_code"
+
+
+class DeliveryCodeLocked(Refusal):
+    status_code = 429
+    default_code = "code_locked"
+    default_detail = "Too many wrong codes. Ask the shop for a new code."
+    reason = "code_locked"
+
+
+class NoDeliveryCode(Refusal):
+    status_code = 409
+    default_code = "no_delivery_code"
+    default_detail = "No delivery code has been issued for this order."
+    reason = "no_delivery_code"
+
+
+class NotOutForDelivery(Refusal):
+    status_code = 409
+    default_code = "not_out_for_delivery"
+    default_detail = "This order is not out for delivery."
+    reason = "not_out_for_delivery"
+
+
+_CONFIRM_REFUSALS = {
+    services.ORDER_NOT_FOUND: DeliveryOrderNotFound,
+    services.WRONG_CODE: WrongDeliveryCode,
+    services.MALFORMED_CODE: MalformedDeliveryCode,
+    services.CODE_LOCKED: DeliveryCodeLocked,
+    services.NO_DELIVERY_CODE: NoDeliveryCode,
+    services.NOT_OUT_FOR_DELIVERY: NotOutForDelivery,
+}
+
+
+class CanConfirmDelivery(BasePermission):
+    """Only an account holding the confirm-delivery permission (riders, and staff given it)."""
+
+    def has_permission(self, request: Request, view: object) -> bool:
+        return delivery_codes.can_confirm_delivery(request.user)
+
+
+class ConfirmDeliveryThrottle(UserRateThrottle):
+    """A ceiling per signed-in user. The real defence against guessing is the lock on each code."""
+
+    scope = "delivery_confirm"
+    rate = "120/hour"
+
+
+class ConfirmDeliverySerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=16)
+
+
+class ConfirmDeliveryView(APIView):
+    """A rider or staff member enters the code the customer shows. Marks the order delivered."""
+
+    authentication_classes = [SessionWithoutCsrfToken]
+    permission_classes = [IsAuthenticated, CanConfirmDelivery]
+    throttle_classes = [ConfirmDeliveryThrottle]
+
+    def initial(self, request: Request, *args: object, **kwargs: object) -> None:
+        check_origin(request)
+        super().initial(request, *args, **kwargs)
+
+    @extend_schema(request=ConfirmDeliverySerializer, responses={200: None})
+    def post(self, request: Request, reference: str) -> Response:
+        body = ConfirmDeliverySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        result = services.confirm_delivery(
+            reference, body.validated_data["code"], actor=f"user:{request.user.pk}"
+        )
+        refusal = _CONFIRM_REFUSALS.get(result.status)
+        if refusal is not None:
+            raise refusal()
+        return uncached(
+            Response(
+                {
+                    "reference": reference,
+                    "fulfilment_status": "delivered",
+                    "delivered_at": result.delivered_at,
+                    "already_delivered": result.status == services.ALREADY_DELIVERED,
+                }
+            )
+        )
