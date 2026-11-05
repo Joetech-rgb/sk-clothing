@@ -1,0 +1,102 @@
+name: OpenAPI snapshot
+
+# The storefront's typed API client is generated from packages/api-client/openapi.json, so that file
+# must always match what the backend really serves.
+#
+# To refresh it on a branch: push a commit whose message contains [gen-openapi]. The "generate" job
+# runs `manage.py spectacular`, writes the snapshot and commits it back to the same branch. Commits
+# made with the built-in token do not start other workflows, so push an empty commit afterwards to
+# run the checks (same pattern as [gen-migrations]).
+#
+# The "check" job runs on every pull request and on main. It fails if the committed snapshot differs
+# from what the backend generates now, and it always uploads the generated schema as an artifact.
+# Until the snapshot file exists the check only warns.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  generate:
+    if: >-
+      github.event_name == 'push' &&
+      github.ref != 'refs/heads/main' &&
+      contains(github.event.head_commit.message, '[gen-openapi]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: skclothing
+      POSTGRES_USER: sk
+      POSTGRES_PASSWORD: ci-only-throwaway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements/dev.txt
+      - name: Generate the schema
+        working-directory: backend
+        run: |
+          mkdir -p ../packages/api-client
+          python manage.py spectacular --format openapi-json --file ../packages/api-client/openapi.json
+      - name: Commit the snapshot if it changed
+        run: |
+          if [ -n "$(git status --porcelain packages/api-client/openapi.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add packages/api-client/openapi.json
+            git commit -m "Update OpenAPI snapshot"
+            git push
+          else
+            echo "The snapshot is already up to date."
+          fi
+
+  check:
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: skclothing
+      POSTGRES_USER: sk
+      POSTGRES_PASSWORD: ci-only-throwaway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements/dev.txt
+      - name: Generate the schema
+        working-directory: backend
+        run: python manage.py spectacular --format openapi-json --file "$RUNNER_TEMP/openapi.json"
+      - name: Keep the generated schema
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: ${{ runner.temp }}/openapi.json
+          retention-days: 14
+      - name: Compare with the committed snapshot
+        run: |
+          if [ ! -f packages/api-client/openapi.json ]; then
+            echo "::warning::packages/api-client/openapi.json does not exist yet. Push a commit with [gen-openapi] in its message to create it."
+            exit 0
+          fi
+          python - <<'PY'
+          import json, os, sys
+          new = json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "openapi.json"), encoding="utf-8"))
+          old = json.load(open("packages/api-client/openapi.json", encoding="utf-8"))
+          if new == old:
+              print("The committed OpenAPI snapshot matches the backend.")
+              sys.exit(0)
+          added = sorted(set(new.get("paths", {})) - set(old.get("paths", {})))
+          removed = sorted(set(old.get("paths", {})) - set(new.get("paths", {})))
+          print("::error::packages/api-client/openapi.json is out of date. Push a commit with [gen-openapi] in its message.")
+          if added:
+              print("Endpoints not in the snapshot:", ", ".join(added))
+          if removed:
+              print("Endpoints only in the snapshot:", ", ".join(removed))
+          sys.exit(1)
+          PY
