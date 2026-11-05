@@ -1,205 +1,145 @@
-from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
+"""Outbox services. Other apps call queue_sms(), never the outbox model directly.
 
-from django.db import IntegrityError, transaction
-from django.db.models import Q, Sum
+Delivery is at least once, made safe by the idempotency key: a message is queued once per key,
+claimed by one worker at a time, and the key is passed to the provider on every attempt. If a
+worker dies after the provider accepted a message but before we recorded it, the reaper puts the
+message back and it is sent again. Whether the provider drops a repeated key must be confirmed in
+its documentation before real sending is switched on.
+
+Never log a recipient, a body or a key. Log the message id and the exception class only.
+"""
+
+import logging
+from datetime import timedelta
+
+from django.db import transaction
 from django.utils import timezone
 
-from apps.academics.results import class_students
-from apps.students.models import Classroom, Student
+from .factory import get_sms_provider
+from .models import OutboxMessage
+from .providers import SendResult
 
-from .models import (AuditEntry, Discount, FeeStructureItem, Instalment, Invoice, InvoiceLine, Payment,
-                     PaymentAllocation)
+logger = logging.getLogger(__name__)
 
-ZERO = Decimal("0.00")
-TWO = Decimal("0.01")
+MAX_ATTEMPTS = 6
+STUCK_AFTER = timedelta(minutes=10)
+BATCH_SIZE = 100
 
-
-class FinanceError(Exception):
-    pass
-
-
-class DuplicateWarning(FinanceError):
-    # NOTE: this is a subclass of FinanceError, so in views `except DuplicateWarning` must come BEFORE `except FinanceError`.
-    pass
+SKIPPED = "skipped"
 
 
-def audit(user, action, detail=""):
-    AuditEntry.objects.create(user=user if getattr(user, "pk", None) else None, action=action, detail=detail[:300])
+def backoff(attempts: int) -> timedelta:
+    """Wait before the next try: 1 minute, then 2, 4, 8, and never more than an hour."""
+    return timedelta(seconds=min(60 * 2 ** (attempts - 1), 3600))
 
 
-def money(v):
-    return Decimal(str(v)).quantize(TWO, ROUND_HALF_UP)  # FIX: str() avoids binary-float noise for float input
+def queue_sms(
+    *,
+    to_e164: str,
+    text: str,
+    template: str,
+    idempotency_key: str,
+    enqueue: bool = True,
+) -> tuple[OutboxMessage, bool]:
+    """Queue an SMS. Returns (message, created). Queuing the same key again changes nothing.
+
+    Call this inside the transaction that caused the message. The send task is scheduled only
+    after that transaction commits, so a rolled-back event sends nothing.
+    """
+    if not idempotency_key:
+        raise ValueError("an idempotency key is required")
+    message, created = OutboxMessage.objects.get_or_create(
+        idempotency_key=idempotency_key,
+        defaults={"channel": "sms", "recipient": to_e164, "template": template, "body": text},
+    )
+    if created and enqueue:
+        message_id = message.pk
+        transaction.on_commit(lambda: _enqueue(message_id))
+    return message, created
 
 
-def next_number(model, field, prefix):
-    last = model.objects.filter(**{f"{field}__startswith": prefix}).order_by(f"-{field}").first()
-    n = int(getattr(last, field).split("-")[-1]) + 1 if last else 1
-    return f"{prefix}{n:05d}"
+def _enqueue(message_id: int) -> None:
+    """Ask Celery to send now. If that fails the periodic sweep sends it later."""
+    from .tasks import send_outbox_message
+
+    try:
+        send_outbox_message.delay(message_id)
+    except Exception as exc:
+        logger.warning("could not enqueue outbox message %s (%s)", message_id, type(exc).__name__)
 
 
-def invoice_amounts(invoices):
-    """Attach .total, .paid and .balance to each invoice (reversed payments are ignored)."""
-    invoices = list(invoices)
-    ids = [i.pk for i in invoices]
-    totals = dict(InvoiceLine.objects.filter(invoice_id__in=ids).order_by().values_list("invoice_id").annotate(s=Sum("amount")))
-    paid = dict(PaymentAllocation.objects.filter(invoice_id__in=ids, payment__reversed_at__isnull=True)
-                .order_by().values_list("invoice_id").annotate(s=Sum("amount")))
-    for inv in invoices:
-        inv.total, inv.paid = totals.get(inv.pk, ZERO), paid.get(inv.pk, ZERO)
-        inv.balance = inv.total - inv.paid
-    return invoices
-
-
-def student_outstanding(student):
-    invs = invoice_amounts(Invoice.objects.filter(student=student).select_related("term__academic_year"))
-    return sum((i.balance for i in invs), ZERO), invs
-
-
-def term_summary(term):
-    invs = invoice_amounts(Invoice.objects.filter(term=term))
-    expected = sum((i.total for i in invs), ZERO)
-    collected = sum((i.paid for i in invs), ZERO)
-    return {"expected": expected, "collected": collected, "outstanding": expected - collected,
-            "rate": int(collected * 100 / expected) if expected else 0, "invoices": len(invs)}
-
-
-def is_new_student(student, term):
-    return term.start_date - timedelta(days=60) <= student.admission_date <= term.end_date
-
-
-def generate_invoices(term, rooms, user, dummy=False):
-    created = skipped = no_structure = 0
-    for room in rooms:
-        items = list(FeeStructureItem.objects.filter(term=term, level=room.level, fee_type__is_active=True)
-                     .select_related("fee_type").order_by("fee_type__order", "fee_type_id"))
-        for st in class_students(room, term):
-            if Invoice.objects.filter(student=st, term=term).exists():
-                skipped += 1
-                continue
-            lines = [i for i in items if not i.fee_type.new_students_only or is_new_student(st, term)]
-            if not lines:
-                no_structure += 1
-                continue
-            with transaction.atomic():
-                inv = Invoice.objects.create(
-                    number=next_number(Invoice, "number", f"INV-{term.academic_year.start_date.year}-"),
-                    student=st, term=term, classroom=room, created_by=user, is_dummy=dummy)
-                gross = ZERO
-                by_type = {}
-                for it in lines:
-                    InvoiceLine.objects.create(invoice=inv, description=it.fee_type.name, amount=it.amount,
-                                               kind="fee", fee_type=it.fee_type, created_by=user)
-                    gross += it.amount
-                    by_type[it.fee_type_id] = by_type.get(it.fee_type_id, ZERO) + it.amount
-                off = ZERO
-                for d in Discount.objects.filter(student=st, status="approved", is_active=True).filter(
-                        Q(term__isnull=True) | Q(term=term)).select_related("fee_type"):
-                    base = by_type.get(d.fee_type_id, ZERO) if d.fee_type_id else gross
-                    value = money(base * d.percent / 100) if d.percent else min(d.amount or ZERO, base)
-                    value = min(value, gross - off)
-                    if value > 0:
-                        label = d.fee_type.name if d.fee_type_id else "all fees"
-                        InvoiceLine.objects.create(invoice=inv, description=f"{d.get_kind_display()} ({label})" + (f": {d.reason}" if d.reason else ""),
-                                                   amount=-value, kind="discount", created_by=user)
-                        off += value
-                created += 1
-    if created:
-        audit(user, "Invoices generated", f"{term}: {created} created")
-    return {"created": created, "skipped": skipped, "no_structure": no_structure}
-
-
-def record_payment(student, amount, method, reference, paid_on, user, invoice=None, note="", confirm_duplicate=False, dummy=False):
-    amount = money(amount)
-    if amount <= 0:
-        raise FinanceError("Enter an amount greater than zero.")
-    reference = (reference or "").strip()
-    # FIX: balances, duplicate checks and the insert now happen in ONE transaction. Before, the balance was
-    # read first and the payment written later, so two cashiers could both pass the "not more than balance" check.
+def deliver(message_id: int) -> str:
+    """Try to send one message. Returns the resulting status, or SKIPPED if it was not due or
+    another worker already has it."""
+    now = timezone.now()
     with transaction.atomic():
-        Student.objects.select_for_update().filter(pk=student.pk).first()  # serialises per student on PostgreSQL/MySQL
-        outstanding = [i for i in invoice_amounts(Invoice.objects.filter(student=student).select_related("term__academic_year")
-                                                  .order_by("term__start_date", "id")) if i.balance > 0]
-        if invoice is not None:
-            targets = [i for i in outstanding if i.pk == invoice.pk]
-            if not targets:
-                raise FinanceError("That invoice has no balance to pay.")
-        else:
-            targets = outstanding
-        total_due = sum((i.balance for i in targets), ZERO)
-        if not targets:
-            raise FinanceError(f"{student.full_name} has no outstanding balance.")
-        if amount > total_due:
-            raise FinanceError(f"The amount ({amount:,.2f}) is more than the outstanding balance ({total_due:,.2f}).")
-        if reference and Payment.objects.filter(method=method, reference__iexact=reference, reversed_at__isnull=True).exists():
-            raise FinanceError(f"A {method} payment with reference '{reference}' is already recorded (duplicate).")
-        if not confirm_duplicate and Payment.objects.filter(student=student, amount=amount, paid_on=paid_on, reversed_at__isnull=True).exists():
-            raise DuplicateWarning("A payment of the same amount for this student on this date already exists.")
-        pay = None
-        for attempt in range(3):  # FIX: retry if two receipts were given the same number at the same moment
-            try:
-                with transaction.atomic():
-                    pay = Payment.objects.create(
-                        receipt_no=next_number(Payment, "receipt_no", f"RC-{paid_on.year}-"), student=student, amount=amount,
-                        method=method, reference=reference, paid_on=paid_on, note=note, received_by=user, is_dummy=dummy)
-                break
-            except IntegrityError:
-                if attempt == 2:
-                    raise FinanceError("Could not allocate a receipt number. Please try again.")
-        remaining = amount
-        for inv in targets:
-            if remaining <= 0:
-                break
-            take = min(remaining, inv.balance)
-            PaymentAllocation.objects.create(payment=pay, invoice=inv, amount=take)
-            remaining -= take
-    audit(user, "Payment recorded", f"{pay.receipt_no}: GHS {amount} from {student.student_id} ({method})")
-    return pay
+        message = (
+            OutboxMessage.objects.select_for_update(skip_locked=True)
+            .filter(pk=message_id, status=OutboxMessage.Status.PENDING, next_attempt_at__lte=now)
+            .first()
+        )
+        if message is None:
+            return SKIPPED
+        message.status = OutboxMessage.Status.SENDING
+        message.claimed_at = now
+        message.attempts += 1
+        message.save(update_fields=["status", "claimed_at", "attempts"])
+
+    if message.channel != "sms":
+        return _finish(message, SendResult(accepted=False, error="unsupported_channel"))
+    try:
+        result = get_sms_provider().send(
+            message.recipient, message.body, idempotency_key=message.idempotency_key
+        )
+    except Exception as exc:  # a provider bug or a missing setting must not lose the message
+        logger.warning("sms send raised %s for outbox message %s", type(exc).__name__, message.pk)
+        result = SendResult(accepted=False, error="provider_exception", retryable=True)
+    return _finish(message, result)
 
 
-def reverse_payment(payment, user, reason):
-    reason = (reason or "").strip()
-    if not reason:  # FIX: a reversal without a reason is not auditable
-        raise FinanceError("A reason is required to reverse a payment.")
-    with transaction.atomic():
-        # FIX: re-read inside the transaction so a stale page cannot reverse the same payment twice
-        p = Payment.objects.select_for_update().get(pk=payment.pk)
-        if p.reversed_at:
-            raise FinanceError("This payment has already been reversed.")
-        p.reversed_at, p.reversed_by, p.reversal_reason = timezone.now(), user, reason[:255]
-        p.save()
-    payment.reversed_at, payment.reversed_by, payment.reversal_reason = p.reversed_at, p.reversed_by, p.reversal_reason
-    audit(user, "Payment reversed", f"{payment.receipt_no}: {reason}")
+def _finish(message: OutboxMessage, result: SendResult) -> str:
+    """Record the outcome. Only touches the row if this worker still owns it (status sending)."""
+    now = timezone.now()
+    if result.accepted:
+        fields: dict = {
+            "status": OutboxMessage.Status.SENT,
+            "provider_id": (result.provider_id or "")[:64],
+            "sent_at": now,
+            "body": "",
+            "last_error": "",
+        }
+    elif result.retryable and message.attempts < MAX_ATTEMPTS:
+        fields = {
+            "status": OutboxMessage.Status.PENDING,
+            "next_attempt_at": now + backoff(message.attempts),
+            "last_error": (result.error or "")[:100],
+        }
+    else:
+        fields = {
+            "status": OutboxMessage.Status.FAILED,
+            "body": "",
+            "last_error": (result.error or "")[:100],
+        }
+    OutboxMessage.objects.filter(pk=message.pk, status=OutboxMessage.Status.SENDING).update(
+        claimed_at=None, **fields
+    )
+    return str(fields["status"])
 
 
-def create_plan(invoice, count, first_due, every_days):
-    if count < 2:
-        raise FinanceError("An instalment plan needs at least 2 instalments.")
-    invoice = invoice_amounts([invoice])[0]
-    if invoice.balance <= 0:
-        raise FinanceError("This invoice is fully paid.")
-    # plan covers the whole invoice total; instalments already covered by payments show as paid
-    each = money(invoice.total / count)
-    with transaction.atomic():
-        invoice.instalments.all().delete()
-        for n in range(1, count + 1):
-            amt = each if n < count else invoice.total - each * (count - 1)
-            Instalment.objects.create(invoice=invoice, number=n, due_date=first_due + timedelta(days=every_days * (n - 1)), amount=amt)
+def due_ids() -> list[int]:
+    """Ids of messages that are waiting and due, oldest first."""
+    return list(
+        OutboxMessage.objects.filter(
+            status=OutboxMessage.Status.PENDING, next_attempt_at__lte=timezone.now()
+        )
+        .order_by("next_attempt_at")
+        .values_list("pk", flat=True)[:BATCH_SIZE]
+    )
 
 
-def instalment_status(invoice, paid):
-    """For each instalment: paid / part-paid / overdue / upcoming, using the cumulative amount paid so far."""
-    today = timezone.localdate()
-    rows, cumulative = [], ZERO
-    for ins in invoice.instalments.all():
-        cumulative += ins.amount
-        if paid >= cumulative:
-            status = "Paid"
-        elif ins.due_date < today:
-            status = "Overdue"
-        elif paid > cumulative - ins.amount:
-            status = "Part-paid"
-        else:
-            status = "Upcoming"
-        rows.append({"i": ins, "status": status})
-    return rows
+def release_stuck() -> int:
+    """Put back messages a worker claimed and never finished. Returns how many."""
+    now = timezone.now()
+    return OutboxMessage.objects.filter(
+        status=OutboxMessage.Status.SENDING, claimed_at__lt=now - STUCK_AFTER
+    ).update(status=OutboxMessage.Status.PENDING, claimed_at=None, next_attempt_at=now)
