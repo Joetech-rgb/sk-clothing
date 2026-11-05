@@ -64,11 +64,23 @@
 - [ ] Follow-ups from the type-check fixes (see Deviations awaiting human approval)
 
 ## Agent C
-- [ ] Scaffold Next.js, Tailwind and pnpm workspace in web/storefront
-- [ ] Design tokens and base components in packages/ui
-- [ ] Typed API client from the OpenAPI schema (needs PR #3 merged)
+- [x] Scaffold Next.js, Tailwind and pnpm workspace in web/storefront (PR #5, CI result pending)
+- [x] Design tokens and base components in packages/ui (render tests wait on the dependency decision below)
+- [ ] Typed API client from the OpenAPI schema (needs the schema snapshot, request 3 below)
 - [ ] Product list, product page, cart, checkout, tracking, phone login, guest checkout
 - [ ] Playwright for guest checkout and pay on delivery; device pass
+
+Requests to Agent A (numbered, Agent C):
+1. Root package.json: add "packageManager": "pnpm@12.16.1" and root scripts lint, typecheck, test, build, each "pnpm -r --if-present run <name>".
+2. Frontend CI job in .github/workflows/web-ci.yml: pnpm install --frozen-lockfile, then lint, typecheck, test, build. Node 22, pnpm 12.16.1. TypeScript is pinned to 6.x because typescript-eslint does not support 7.0.
+3. OpenAPI snapshot: run `python manage.py spectacular --format openapi-json` in CI and commit the result to packages/api-client/openapi.json (or publish it as a build artifact) whenever the backend API changes. Agent C generates the typed client from it. Local Docker is not an option on Agent C's machine.
+4. Confirm how production routes /api/v1. The storefront's next.config.ts rewrites it to the backend (same origin, so session cookies, CSRF and the Origin check work). Proposal only.
+
+Dependency proposals awaiting human approval (Agent C):
+- openapi-typescript (dev, @sk/api-client): generates types from openapi.json. Alternative: orval (adds runtime code). No runtime cost.
+- jsdom and @testing-library/react (dev): component render tests. Alternative: Playwright component tests (heavier).
+
+Home page JavaScript baseline, 4 November: about 132 KiB gzipped (budget 200 KiB).
 
 ## Log
 - Repo was first created nested by mistake and flattened. Old copy is in sk-clothing-old and can be deleted.
