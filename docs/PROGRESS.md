@@ -56,12 +56,93 @@
 - [ ] Paystack test-mode run (needs keys)
 
 ## Agent B
-- [ ] Waiting for PR #3 to merge
-- [ ] Delivery code wiring (never cut)
-- [ ] Notifications with outbox and Africa's Talking provider (never cut)
-- [ ] Filters API
-- [ ] Staff two-factor (dependency proposal first)
-- [ ] Follow-ups from the type-check fixes (see Deviations awaiting human approval)
+
+Written by Agent B. Everything another agent or the human needs from Agent B is in this section.
+Phase 1A, Week 5. Hand-over Friday 13 November 2026.
+
+### Where Agent B's work is
+
+| Branch | What it holds | Pull request | State |
+|---|---|---|---|
+| `b/delivery-code` | Derived delivery code, confirm-by-code endpoint, `delivered_at`, code on the order page, ADR 0021, migrations | #9 | Open. CI result pending when this was written. Do not push to it while CI runs |
+| `b/followups` | `_customer()` typed (type-ignore removed), tests for the four type-check guards | not opened yet | Pushed. Human to open the pull request |
+| `b/outbox` | Messaging outbox (queue, send, retry, release stuck) and 11 tests | not opened yet | Pushed. CI will fail until Agent A does requests 1 to 3 below |
+| `b/derived-code` | Same two files as in `b/delivery-code` | none | Superseded. The human may delete this branch |
+
+### Requests to Agent A (numbered, please answer under this heading)
+
+1. Add `"apps.messaging"` to `INSTALLED_APPS` in `backend/config/settings/base.py`. The folder already
+   exists. It now has `apps.py`, `models.py`, `services.py` and `tasks.py` (on `b/outbox`).
+2. Add to `CELERY_BEAT_SCHEDULE` (every 60 seconds): task `messaging.dispatch_due_messages`.
+3. After 1 and 2, run the `[gen-migrations]` workflow on `b/outbox` to create
+   `messaging/migrations/0001_initial.py`.
+4. Make the generate-migrations workflow safe against a race: add `git pull --rebase` before its
+   final `git push`. Today, if anyone pushes to the branch while the job runs, the job's push is
+   rejected ("fetch first") and the migrations are lost. This happened twice on `b/delivery-code`.
+5. When pull request #9 merges, regenerate the OpenAPI snapshot (the drift check from #8 will
+   otherwise fail): #9 adds one endpoint and two fields on the order JSON (see the notes for Agent C).
+6. Follow-up, not urgent: a separate `DELIVERY_CODE_KEYS` setting (key id to secret, from the
+   environment) so the delivery code key can be rotated on its own. Today the key is derived from
+   `SECRET_KEY` with its own label.
+7. Agent A's folder `sk-clothing` has two commits on its local `main` that are not on `origin/main`
+   (`66707ba`, `e4e3369`). Move them onto a branch. Never push `main`.
+
+### Notes for Agent C (endpoints and fields)
+
+- New endpoint, for riders and staff only (not the storefront): `POST /api/v1/orders/{reference}/delivery-code/verify/`,
+  body `{"code": "123456"}`. Errors carry `details.reason`: `wrong_code`, `malformed_code` (400),
+  `code_locked` (429), `order_not_found` (404), `no_delivery_code`, `not_out_for_delivery` (409).
+  Success returns `reference`, `fulfilment_status`, `delivered_at`, `already_delivered`.
+- Changed: the order JSON (checkout response and `POST /api/v1/orders/lookup/`) gains
+  `delivery_code` (string or null) and `delivery_code_locked` (boolean). The code is set only while
+  `fulfilment_status` is `out_for_delivery`, and is null when locked. The order tracking page should
+  show it when present, with a line telling the customer to give it to the rider only when they
+  have their goods, and a "ask the shop for a new code" message when `delivery_code_locked` is true.
+- The client never computes or stores the code. Show what the server returns.
+
+### For the human
+
+1. Decide the CONFIRM items in `docs/adr/0021-derived-delivery-code.md` (derived code instead of a
+   stored hash; who may confirm; lockout reissue by staff only; code visible via the order lookup).
+   Agent B built PR #9 on its recommendations.
+2. In the Django admin, create a group "Delivery rider" holding the permission "Can confirm a
+   delivery by entering the code", and give it to staff who may confirm. Superusers have it already.
+   Until this is done nobody but a superuser can confirm a delivery.
+3. Open pull requests for `b/followups` and `b/outbox`. Suggested merge order: `b/followups`, then
+   #9 when its CI is green, then `b/outbox` after Agent A's requests 1 to 3.
+4. Still unanswered: how long pay-on-delivery and awaiting-quote orders hold stock (open question 15).
+5. The wording of the order confirmation and pickup reminder messages (open question 18) is still to
+   be drafted by Agent B and approved. Only the delivery code message is approved (below).
+6. Africa's Talking sandbox keys: put them in the environment secrets, never in the repository or chat.
+
+### Approved message wording (human approved)
+
+Delivery code SMS, sent when an order is dispatched:
+`S.K Clothing: your order {reference} is on its way. Delivery code: {code}. Give it to the rider only when you have your goods.`
+
+### Next tasks for Agent B, in order
+
+1. **PR 3a** (needs #9 merged or stacked on it): `mark_packed` and `dispatch_order` services (dispatch
+   moves the order to out for delivery and issues the code in one transaction); order admin actions
+   "Mark packed", "Dispatch" and "Reissue delivery code" (staff, each with its own permission);
+   tests.
+2. **PR 3b** (needs `b/outbox` merged, so Agent A's requests 1 to 3): send the delivery code SMS
+   through the outbox with the approved wording; idempotency key per order and issue number.
+3. Africa's Talking SMS provider behind `SmsProvider`. Read the official docs first. No SDK. No new
+   dependency. Check how it treats a repeated request before real sending is switched on.
+4. Filters API (size, colour, price range) with a query-count test.
+5. Staff two-factor: dependency proposal first, no package before approval.
+6. Draft the remaining message wording (order confirmation, pickup reminder).
+
+### Lessons for every agent (cost real time this week)
+
+- Before running any command, check the prompt shows your own folder (`sk-agent-b`, `sk-agent-c`,
+  `sk-clothing`). The three folders share one Git repository, so a branch checked out in one folder
+  cannot be used in another.
+- `[gen-migrations]`: push the tagged commit, then wait for the bot's "Generate migrations" commit
+  and push nothing. Run `git pull`, then open the pull request. Pushing while the job runs makes its
+  push fail.
+- Never push `main`. Branch from the latest `origin/main`. Do not edit a file you do not own.
 
 ## Agent C
 - [x] Scaffold Next.js, Tailwind and pnpm workspace in web/storefront (PR #5, CI result pending)
