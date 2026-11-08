@@ -136,7 +136,7 @@ Backend apps: `identity`, `catalog`, `pricing`, `inventory`, `orders`, `payments
 - **Accra doorstep fee** = `max(minimum_fee, base_fee + rate_per_km × km)`, where km is straight-line distance from the shop times a road factor of **1.3**. Beyond the maximum distance the order goes to awaiting quote. All values are admin settings, none are hard-coded.
 - **Pay on delivery** is offered only for **Accra doorstep** orders. It enters a COD-pending state that staff confirm by phone before packing.
 - Pickup orders are held 7 days. A reminder is sent on **day 3**. After day 7 the order is flagged **uncollected** and admin chooses uncollected or refund.
-- **Delivery code:** six digits, stored as an HMAC, five attempts then lockout, shown on the order page and sent by SMS. Entering it (rider or staff) marks the order delivered and records who confirmed it. Delivery starts the return clock and the commission hold.
+- **Delivery code:** six digits, derived on demand from a random per-order nonce and a server secret (the database stores neither the code nor a hash of it, see ADR 0021), five attempts then lockout, shown on the order page and sent by SMS. Entering it (rider or staff) marks the order delivered and records who confirmed it. Delivery starts the return clock and the commission hold.
 - Delivery fees collected and paid to couriers are tracked in their own section and **never** mix with inventory or revenue.
 
 ### Returns
