@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     "apps.inventory",
     "apps.delivery",
     "apps.orders",
+    "apps.messaging",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -97,6 +98,11 @@ CELERY_BEAT_SCHEDULE = {
     "check-overdue-refunds": {
         "task": "apps.payments.tasks.check_overdue_refunds",
         "schedule": 3600.0,
+    },
+    # Queued messages (SMS) that are due are sent, and stuck ones are released. Every minute.
+    "send-due-messages": {
+        "task": "apps.messaging.tasks.dispatch_due_messages",
+        "schedule": 60.0,
     },
 }
 
