@@ -64,21 +64,38 @@
 - [ ] Follow-ups from the type-check fixes (see Deviations awaiting human approval)
 
 ## Agent C
-- [x] Scaffold Next.js, Tailwind and pnpm workspace in web/storefront (PR #5, CI result pending)
-- [x] Design tokens and base components in packages/ui (render tests wait on the dependency decision below)
+- [x] Scaffold Next.js, Tailwind and pnpm workspace in web/storefront (PR #5, Web CI green)
+- [x] Design tokens and base components in packages/ui (shell and render tests are on their own branches, see Branches)
+- [x] Browser cart, ids and quantities only (branch c/cart)
+- [x] Checkout form matched to POST /api/v1/orders/, with the Mapbox location picker (branch c/map-picker). Not yet wired to the API or mounted on /checkout.
 - [ ] Typed API client from the OpenAPI schema (needs the schema snapshot, request 3 below)
-- [ ] Product list, product page, cart, checkout, tracking, phone login, guest checkout
+- [ ] Product list, product page, cart page, checkout wiring, tracking, phone login, guest checkout
 - [ ] Playwright for guest checkout and pay on delivery; device pass
 
-Requests to Agent A (numbered, Agent C):
-1. Root package.json: add "packageManager": "pnpm@12.16.1" and root scripts lint, typecheck, test, build, each "pnpm -r --if-present run <name>".
-2. Frontend CI job in .github/workflows/web-ci.yml: pnpm install --frozen-lockfile, then lint, typecheck, test, build. Node 22, pnpm 12.16.1. TypeScript is pinned to 6.x because typescript-eslint does not support 7.0.
-3. OpenAPI snapshot: run `python manage.py spectacular --format openapi-json` in CI and commit the result to packages/api-client/openapi.json (or publish it as a build artifact) whenever the backend API changes. Agent C generates the typed client from it. Local Docker is not an option on Agent C's machine.
-4. Confirm how production routes /api/v1. The storefront's next.config.ts rewrites it to the backend (same origin, so session cookies, CSRF and the Origin check work). Proposal only.
+Branches (all stacked on c/scaffold):
+1. c/scaffold (PR #5): scaffold, @sk/ui, header and footer, placeholder routes.
+2. c/component-tests: render tests for @sk/ui (adds jsdom and Testing Library to @sk/ui).
+3. c/cart: browser cart.
+4. c/map-picker: checkout form matched to the API plus the Mapbox location picker. It contains the earlier c/checkout-form commit.
+Merge order: 1 first, with a merge commit. Then 2 and 3 in either order. Then 4. Expect one pnpm-lock.yaml conflict between 2 and 4; resolve by merging main and running pnpm install.
+Abandoned, do not merge: c/ui-tests (started from the wrong base, no packages) and c/checkout-form (replaced by c/map-picker).
 
-Dependency proposals awaiting human approval (Agent C):
-- openapi-typescript (dev, @sk/api-client): generates types from openapi.json. Alternative: orval (adds runtime code). No runtime cost.
-- jsdom and @testing-library/react (dev): component render tests. Alternative: Playwright component tests (heavier).
+Requests to Agent A (numbered, Agent C):
+1. Root package.json: add "packageManager": "pnpm@12.16.1" and root scripts lint, typecheck, test, build, each "pnpm -r --if-present run <name>". Agent A is making this change; Agent C does not edit the root package.json.
+2. Frontend CI job in .github/workflows/web-ci.yml: pnpm install --frozen-lockfile, then lint, typecheck, test, build. Node 22, pnpm 12.16.1. TypeScript is pinned to 6.x because typescript-eslint does not support 7.0. (Web CI passed on PR #5 at c93ef02.)
+3. OpenAPI snapshot: run `python manage.py spectacular --format openapi-json` in CI and commit the result to packages/api-client/openapi.json (or publish it as a build artifact) whenever the backend API changes. Agent C generates the typed client from it. Local Docker is not an option on Agent C's machine.
+4. Confirm how production routes /api/v1. The storefront's next.config.ts rewrites it to the backend (same origin, so session cookies, CSRF and the Origin check work). The checkout, login and payment endpoints run an Origin check, so staging and production must trust the storefront's origin.
+5. NEXT_PUBLIC_MAPBOX_TOKEN must be set as a build-time variable for staging and production builds. The human adds those URLs to the token's allowed URLs in the Mapbox account.
+6. Standalone output for Docker, if wanted: next.config.ts would set output "standalone" only when NEXT_OUTPUT=standalone, so local Windows builds are unaffected. Awaiting the human's yes.
+
+Requests to Agent B (numbered, Agent C):
+7. The order lookup response (POST /api/v1/orders/lookup/) has no delivery code. Tracking must show it once issued.
+8. Quantity limits disagree: the price endpoint accepts up to 10,000 of one item, checkout up to 1,000.
+
+Dependency proposals (Agent C):
+- mapbox-gl 3.34.2 (runtime, @sk/storefront). Decision: the human chose Mapbox as the map provider and ran the install. Why: doorstep orders need a pinned location, which the server requires (latitude and longitude). Alternatives considered: Leaflet with MapTiler (about 42 KB gzipped against about 210 KB for a vector map library; recommended by Agent C) and Google Maps. Cost: free up to 50,000 map loads a month, then billed per 1,000; a card is required. Licence: version 2 and later is not open source and only works with Mapbox services. The map code is loaded lazily, so it is outside the initial JavaScript. Token variable: NEXT_PUBLIC_MAPBOX_TOKEN. It must be a public (pk.) token restricted to our URLs; the human confirms this. The map chunk size is not yet measured, because no page mounts the picker yet.
+- openapi-typescript (dev, @sk/api-client): approved by the human, not yet installed. Waits for the schema snapshot.
+- jsdom, @testing-library/react, @testing-library/dom, @types/react-dom (dev, @sk/ui): approved by the human, installed on c/component-tests.
 
 Home page JavaScript baseline, 4 November: about 132 KiB gzipped (budget 200 KiB).
 
