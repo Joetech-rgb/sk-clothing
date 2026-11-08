@@ -1,0 +1,4 @@
+# DRAFT: needs proposal 0001 (docs/proposals/0001-production-web-server.md) approved first.
+# Production only. CI and local work keep using dev.txt and base.txt.
+-r base.txt
+gunicorn>=23
