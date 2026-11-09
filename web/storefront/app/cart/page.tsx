@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/PlaceholderPage";
+import { CartView } from "../../components/CartView";
 
-export const metadata: Metadata = { title: "Cart" };
+export const metadata: Metadata = { title: "Your cart" };
 
-export default function Page() {
-  return <PlaceholderPage title="Cart" />;
+export default function CartPage() {
+  return <CartView />;
 }
