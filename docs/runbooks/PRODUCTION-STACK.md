@@ -10,8 +10,9 @@ Status date: 8 November 2026. Owner: Agent A. Replaces nothing: local developmen
 | `infra/nginx/update-cloudflare-ips.sh` | Fake downloads: good lists are written; a garbage line, too few ranges and a failed download all write nothing. `shellcheck` clean |
 | `docker-compose.prod.yml` | YAML parses; service names match the deploy workflow (`backend`, `db`). **Never run with Docker** |
 | `infra/Dockerfile.backend.prod`, `backend/requirements/prod.txt` | **Never built** |
+| `infra/Dockerfile.storefront` | Its steps were run for real on the current `main` outside Docker: install with the pinned pnpm, build with `NEXT_OUTPUT=standalone`, then start `server.js` from a clean folder containing only what the image copies. `/`, `/products`, `/cart`, `/checkout` and `/orders` answered 200, a built asset was served, `x-powered-by` was off, and the server used about 92 MB. **The Dockerfile itself was never built** |
 
-Open items marked [CHECK]: `config/wsgi.py` exists; the storefront image (`infra/Dockerfile.storefront`, needs Agent C and `output: "standalone"`); the chosen `DJANGO_SETTINGS_MODULE`.
+Open items marked [CHECK]: `config/wsgi.py` exists; the chosen `DJANGO_SETTINGS_MODULE`.
 
 ## Changes from the local setup
 - Django service is `backend` (the local file calls it `web`) and runs Gunicorn as a non-root user, not `runserver`.
@@ -20,7 +21,7 @@ Open items marked [CHECK]: `config/wsgi.py` exists; the storefront image (`infra
 - The database has a health check; the app waits for it.
 
 ## First start on the server
-1. Create `.env` from `.env.production.example`. Fill in secrets on the server only.
+1. Create `.env` from `infra/production.env.example`. Fill in secrets on the server only.
 2. In Cloudflare: SSL/TLS, Origin Server, create an origin certificate. Save the certificate as `infra/nginx/certs/origin.pem` and the key as `infra/nginx/certs/origin.key` (`chmod 600`). Set SSL mode to **Full (strict)**. Both files are git-ignored.
 3. `bash infra/nginx/update-cloudflare-ips.sh`
 4. Firewall: allow ports 80 and 443 only from Cloudflare's published addresses, and SSH only from your own address. Only then set `TRUST_CLOUDFLARE_HEADERS=1`.
@@ -32,7 +33,7 @@ Open items marked [CHECK]: `config/wsgi.py` exists; the storefront image (`infra
 Staging deploy workflow settings: `STAGING_COMPOSE_FILE=docker-compose.prod.yml`. The defaults for the app and database service names already match.
 
 ## Later
-- Start the storefront: `docker compose -f docker-compose.prod.yml --profile storefront up -d`, once Agent C's image exists.
+- Start the storefront: `docker compose -f docker-compose.prod.yml --profile storefront up -d --build`. Put the PUBLIC Mapbox token in `.env` as `NEXT_PUBLIC_MAPBOX_TOKEN` first: it is baked in when the image is built, so rebuild after changing it.
 - Add HSTS to nginx only after HTTPS has been proven on the domain.
 - Rate limiting at nginx or Cloudflare is still provisional (ADR 0002).
 - Re-run `update-cloudflare-ips.sh` about monthly, then reload nginx.

@@ -2,7 +2,7 @@
 # Needs proposal 0001 approved. Service names match the deploy workflow: "backend" and "db".
 #
 # Server-side files that are NOT in the repository (see docs/runbooks/PRODUCTION-STACK.md):
-#   .env                          secrets and settings (start from .env.production.example)
+#   .env                          secrets and settings (start from infra/production.env.example)
 #   infra/nginx/certs/origin.pem  Cloudflare origin certificate
 #   infra/nginx/certs/origin.key  its private key
 name: skclothing
@@ -105,17 +105,19 @@ services:
     depends_on:
       - backend
 
-  # The Next.js storefront. Off until Agent C's production image exists:
-  #   docker compose -f docker-compose.prod.yml --profile storefront up -d
-  # [CHECK] with Agent C: needs infra/Dockerfile.storefront and output: "standalone".
+  # The Next.js storefront. Started with the "storefront" profile:
+  #   docker compose -f docker-compose.prod.yml --profile storefront up -d --build
+  # nginx sends everything except /api/, /admin/ and /static/ here.
   storefront:
     profiles: ["storefront"]
     build:
       context: .
       dockerfile: infra/Dockerfile.storefront
+      args:
+        # Both are read when the image is built, from the server's .env file.
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+        BACKEND_ORIGIN: http://backend:8000
     restart: unless-stopped
-    environment:
-      BACKEND_ORIGIN: http://backend:8000
     expose:
       - "3000"
 

@@ -1,0 +1,31 @@
+# Production image for the Next.js storefront (web/storefront). Build from the repository root:
+#   docker compose -f docker-compose.prod.yml --profile storefront build
+# Needs the root package.json "packageManager" pin so the right pnpm is used.
+FROM node:22-slim AS build
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 NEXT_TELEMETRY_DISABLED=1
+RUN corepack enable
+WORKDIR /repo
+
+# Dependencies first, so this layer is reused until the lockfile changes.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages ./packages
+COPY web/storefront ./web/storefront
+RUN pnpm install --frozen-lockfile
+
+# Read at build time. The Mapbox token is the PUBLIC kind (starts with pk.); restrict it to this
+# site's address in the Mapbox account. Never put a secret token here.
+ARG NEXT_PUBLIC_MAPBOX_TOKEN
+ARG BACKEND_ORIGIN=http://backend:8000
+ENV NEXT_OUTPUT=standalone
+RUN pnpm --filter @sk/storefront build
+
+FROM node:22-slim AS run
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
+WORKDIR /app
+COPY --from=build --chown=node:node /repo/web/storefront/.next/standalone ./
+COPY --from=build --chown=node:node /repo/web/storefront/.next/static ./web/storefront/.next/static
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "web/storefront/server.js"]
