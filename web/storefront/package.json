@@ -13,6 +13,7 @@
   "dependencies": {
     "@sk/api-client": "workspace:*",
     "@sk/ui": "workspace:*",
+    "mapbox-gl": "^3.34.2",
     "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
