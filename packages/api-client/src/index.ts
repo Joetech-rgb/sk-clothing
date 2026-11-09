@@ -1,4 +1,3 @@
-// Placeholder. Task 3 generates the typed client into src/generated/ from the
-// backend OpenAPI schema (/api/v1/schema/). Files in src/generated/ are never
-// edited by hand.
-export {};
+// The typed client. Everything under src/generated/ comes from openapi.json through
+// `pnpm --filter @sk/api-client generate` and is never edited by hand.
+export type { components, operations, paths } from "./generated/schema";
