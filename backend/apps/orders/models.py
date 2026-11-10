@@ -81,9 +81,15 @@ class Order(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)  # set when delivered
 
     class Meta:
         ordering = ["-id"]
+        permissions = [
+            ("pack_order", "Can mark orders as packed"),
+            ("dispatch_order", "Can send orders out for delivery"),
+            ("reissue_delivery_code", "Can issue a new delivery code"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=Q(subtotal_pesewas__gte=0), name="order_subtotal_not_negative"

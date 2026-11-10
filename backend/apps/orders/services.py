@@ -2,12 +2,18 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
+
+from apps.delivery import code_services as delivery_codes
 
 from .models import Order, OrderEvent, OrderLine, SubOrder
 from .states import (
     Event,
+    Fulfilment,
+    InvalidTransition,
     OrderState,
     Transition,
     apply_event,
@@ -147,7 +153,11 @@ def transition(order_id: int, event: Event | str, *, actor: str) -> Transition:
         order.payment = result.after.payment.value
         order.fulfilment = result.after.fulfilment.value
         order.refund = result.after.refund.value
-        order.save(update_fields=["payment", "fulfilment", "refund", "updated_at"])
+        update_fields = ["payment", "fulfilment", "refund", "updated_at"]
+        if event == Event.DELIVERED and order.delivered_at is None:
+            order.delivered_at = timezone.now()  # starts the return clock and commission hold
+            update_fields.append("delivered_at")
+        order.save(update_fields=update_fields)
         OrderEvent.objects.create(
             order=order,
             event=event.value,
@@ -156,3 +166,71 @@ def transition(order_id: int, event: Event | str, *, actor: str) -> Transition:
             actor=actor,
         )
     return result
+
+
+DELIVERED_OK = "delivered"
+ALREADY_DELIVERED = "already_delivered"
+ORDER_NOT_FOUND = "order_not_found"
+NOT_OUT_FOR_DELIVERY = "not_out_for_delivery"
+WRONG_CODE = "wrong_code"
+MALFORMED_CODE = "malformed_code"
+CODE_LOCKED = "code_locked"
+NO_DELIVERY_CODE = "no_delivery_code"
+
+_CODE_OUTCOMES = {
+    delivery_codes.WRONG: WRONG_CODE,
+    delivery_codes.MALFORMED: MALFORMED_CODE,
+    delivery_codes.LOCKED: CODE_LOCKED,
+    delivery_codes.NO_CODE: NO_DELIVERY_CODE,
+}
+
+
+@dataclass(frozen=True)
+class ConfirmResult:
+    status: str
+    delivered_at: datetime | None = None
+
+
+def confirm_delivery(reference: str, submitted: str, *, actor: str) -> ConfirmResult:
+    """A rider or staff member enters the delivery code. The caller has already checked that they
+    may. A correct code marks the order delivered and records who confirmed it and when.
+
+    Everything happens under a lock on the order, so two people entering the code at once deliver
+    it once. A wrong or locked code is returned, not raised: raising would roll back the count of
+    wrong attempts, and the count is what stops guessing. Repeating a correct code is a no-op.
+    """
+    try:
+        with transaction.atomic():
+            order = Order.objects.select_for_update().filter(reference=reference).first()
+            if order is None:
+                return ConfirmResult(ORDER_NOT_FOUND)
+            if order.fulfilment == Fulfilment.DELIVERED.value:
+                return ConfirmResult(ALREADY_DELIVERED, order.delivered_at)
+            if order.fulfilment != Fulfilment.OUT_FOR_DELIVERY.value:
+                return ConfirmResult(NOT_OUT_FOR_DELIVERY)
+            outcome = delivery_codes.check_delivery_code(order.pk, submitted, actor=actor)
+            if outcome != delivery_codes.OK:
+                return ConfirmResult(_CODE_OUTCOMES[outcome])
+            transition(order.pk, Event.DELIVERED, actor=actor)
+            delivery_codes.mark_code_used(order.pk, actor=actor)
+            order.refresh_from_db(fields=["delivered_at"])
+            return ConfirmResult(DELIVERED_OK, order.delivered_at)
+    except InvalidTransition:  # raised inside the block, so nothing above was kept
+        return ConfirmResult(NOT_OUT_FOR_DELIVERY)
+
+
+def mark_packed(order_id: int, *, actor: str) -> Transition:
+    """Staff finished packing an order that is paid (or confirmed for pay on delivery)."""
+    return transition(order_id, Event.PACKED, actor=actor)
+
+
+def dispatch_order(order_id: int, *, actor: str) -> str:
+    """Send a packed delivery order out and issue its delivery code, in one transaction.
+
+    Returns the code so the caller can send it. Never log it. Repeating this is safe: the order
+    does not move twice and the same code comes back. Raises InvalidTransition for a pickup
+    order, an order that is not packed, or one that is already delivered.
+    """
+    with transaction.atomic():
+        transition(order_id, Event.DISPATCHED, actor=actor)
+        return delivery_codes.issue_delivery_code(order_id, actor=actor)
