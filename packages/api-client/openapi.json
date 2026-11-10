@@ -1,0 +1,1235 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "S.K Clothing API",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/api/v1/auth/code/request/": {
+            "post": {
+                "operationId": "auth_code_request_create",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "auth"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RequestCode"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "202": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/code/verify/": {
+            "post": {
+                "operationId": "auth_code_verify_create",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "auth"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VerifyCode"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/logout/": {
+            "post": {
+                "operationId": "auth_logout_create",
+                "description": "Ends the session. Safe to call when nobody is signed in. Protected by the Origin check\nrather than a CSRF token, so the storefront needs no token for it; the worst a forged\nrequest could do is sign a visitor out.",
+                "tags": [
+                    "auth"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me/": {
+            "get": {
+                "operationId": "auth_me_retrieve",
+                "description": "Who is signed in. 401 when nobody is, so the storefront can show the login screen.",
+                "tags": [
+                    "auth"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/categories/": {
+            "get": {
+                "operationId": "catalog_categories_list",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "catalog"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Category"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/price/": {
+            "post": {
+                "operationId": "catalog_price_create",
+                "description": "Prices a basket. The caller sends variant ids and quantities and nothing else: every price\ncomes from the database through resolve_price(), so a browser can never name its own price.",
+                "tags": [
+                    "catalog"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PriceRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PriceResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/products/": {
+            "get": {
+                "operationId": "catalog_products_retrieve",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "category",
+                        "schema": {
+                            "type": "string",
+                            "pattern": "^[-a-zA-Z0-9_]+$",
+                            "minLength": 1
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 64
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 50,
+                            "minimum": 1,
+                            "default": 24
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "q",
+                        "schema": {
+                            "type": "string",
+                            "default": "",
+                            "maxLength": 200
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "sort",
+                        "schema": {
+                            "enum": [
+                                "newest",
+                                "price_high",
+                                "price_low",
+                                "relevance"
+                            ],
+                            "type": "string",
+                            "default": "relevance",
+                            "minLength": 1
+                        },
+                        "description": "* `newest` - newest\n* `price_high` - price_high\n* `price_low` - price_low\n* `relevance` - relevance"
+                    }
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductPage"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/catalog/products/{slug}/": {
+            "get": {
+                "operationId": "catalog_products_retrieve_2",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "catalog"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/delivery/quote/": {
+            "post": {
+                "operationId": "delivery_quote_create",
+                "description": "What delivery would cost. The caller sends where to, never a fee.",
+                "tags": [
+                    "delivery"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/QuoteRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/QuoteResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/delivery/stations/": {
+            "get": {
+                "operationId": "delivery_stations_list",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "delivery"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Station"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/orders/": {
+            "post": {
+                "operationId": "orders_create",
+                "description": "Guests and signed-in customers both use it. The Origin check stands in for a CSRF token.",
+                "tags": [
+                    "orders"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Checkout"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "201": {
+                        "description": "No response body"
+                    },
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/orders/lookup/": {
+            "post": {
+                "operationId": "orders_lookup_create",
+                "description": "Look an order up again with its reference and the phone number it was placed with.",
+                "tags": [
+                    "orders"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Lookup"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/initialize/": {
+            "post": {
+                "operationId": "payments_initialize_create",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "payments"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Initialize"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/payments/verify/": {
+            "get": {
+                "operationId": "payments_verify_retrieve",
+                "description": "No login needed, so no session: no cookie is set and no CSRF check applies.",
+                "tags": [
+                    "payments"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1/schema/": {
+            "get": {
+                "operationId": "schema_retrieve",
+                "description": "OpenApi3 schema for this API. Format can be selected via content negotiation.\n\n- YAML: application/vnd.oai.openapi\n- JSON: application/vnd.oai.openapi+json",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "format",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "json",
+                                "yaml"
+                            ]
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "lang",
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "af",
+                                "ar",
+                                "ar-dz",
+                                "ast",
+                                "az",
+                                "be",
+                                "bg",
+                                "bn",
+                                "br",
+                                "bs",
+                                "ca",
+                                "ckb",
+                                "cs",
+                                "cy",
+                                "da",
+                                "de",
+                                "dsb",
+                                "el",
+                                "en",
+                                "en-au",
+                                "en-gb",
+                                "eo",
+                                "es",
+                                "es-ar",
+                                "es-co",
+                                "es-mx",
+                                "es-ni",
+                                "es-ve",
+                                "et",
+                                "eu",
+                                "fa",
+                                "fi",
+                                "fr",
+                                "fy",
+                                "ga",
+                                "gd",
+                                "gl",
+                                "he",
+                                "hi",
+                                "hr",
+                                "hsb",
+                                "hu",
+                                "hy",
+                                "ia",
+                                "id",
+                                "ig",
+                                "io",
+                                "is",
+                                "it",
+                                "ja",
+                                "ka",
+                                "kab",
+                                "kk",
+                                "km",
+                                "kn",
+                                "ko",
+                                "ky",
+                                "lb",
+                                "lt",
+                                "lv",
+                                "mk",
+                                "ml",
+                                "mn",
+                                "mr",
+                                "ms",
+                                "my",
+                                "nb",
+                                "ne",
+                                "nl",
+                                "nn",
+                                "os",
+                                "pa",
+                                "pl",
+                                "pt",
+                                "pt-br",
+                                "ro",
+                                "ru",
+                                "sk",
+                                "sl",
+                                "sq",
+                                "sr",
+                                "sr-latn",
+                                "sv",
+                                "sw",
+                                "ta",
+                                "te",
+                                "tg",
+                                "th",
+                                "tk",
+                                "tr",
+                                "tt",
+                                "udm",
+                                "ug",
+                                "uk",
+                                "ur",
+                                "uz",
+                                "vi",
+                                "zh-hans",
+                                "zh-hant"
+                            ]
+                        }
+                    }
+                ],
+                "tags": [
+                    "schema"
+                ],
+                "security": [
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/vnd.oai.openapi": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            },
+                            "application/yaml": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            },
+                            "application/vnd.oai.openapi+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AppliedDiscount": {
+                "type": "object",
+                "properties": {
+                    "discount_id": {
+                        "type": "integer"
+                    },
+                    "kind": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "type": "integer"
+                    },
+                    "unit_price_after": {
+                        "$ref": "#/components/schemas/Money"
+                    }
+                },
+                "required": [
+                    "discount_id",
+                    "kind",
+                    "unit_price_after",
+                    "value"
+                ]
+            },
+            "Category": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "parent_id": {
+                        "type": "integer",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "parent_id",
+                    "slug"
+                ]
+            },
+            "CategoryRef": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            },
+            "Checkout": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Item"
+                        },
+                        "maxItems": 50,
+                        "minItems": 1
+                    },
+                    "delivery": {
+                        "$ref": "#/components/schemas/Delivery"
+                    },
+                    "contact_name": {
+                        "type": "string",
+                        "maxLength": 120
+                    },
+                    "contact_phone": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "payment_method": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/PaymentMethodEnum"
+                            }
+                        ],
+                        "default": "online"
+                    }
+                },
+                "required": [
+                    "contact_name",
+                    "contact_phone",
+                    "delivery",
+                    "items"
+                ]
+            },
+            "Delivery": {
+                "type": "object",
+                "properties": {
+                    "method": {
+                        "$ref": "#/components/schemas/MethodEnum"
+                    },
+                    "station_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "latitude": {
+                        "type": "number",
+                        "format": "double",
+                        "maximum": 90,
+                        "minimum": -90
+                    },
+                    "longitude": {
+                        "type": "number",
+                        "format": "double",
+                        "maximum": 180,
+                        "minimum": -180
+                    },
+                    "address": {
+                        "type": "string",
+                        "maxLength": 300
+                    }
+                },
+                "required": [
+                    "method"
+                ]
+            },
+            "Image": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    },
+                    "alt_text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "alt_text",
+                    "url"
+                ]
+            },
+            "Initialize": {
+                "type": "object",
+                "properties": {
+                    "order_reference": {
+                        "type": "string",
+                        "maxLength": 24
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "maxLength": 254
+                    }
+                },
+                "required": [
+                    "email",
+                    "order_reference"
+                ]
+            },
+            "Item": {
+                "type": "object",
+                "properties": {
+                    "variant_id": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "maximum": 1000,
+                        "minimum": 1
+                    }
+                },
+                "required": [
+                    "quantity",
+                    "variant_id"
+                ]
+            },
+            "Lookup": {
+                "type": "object",
+                "properties": {
+                    "reference": {
+                        "type": "string",
+                        "maxLength": 24
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 32
+                    }
+                },
+                "required": [
+                    "phone",
+                    "reference"
+                ]
+            },
+            "MethodEnum": {
+                "enum": [
+                    "doorstep",
+                    "pickup",
+                    "station"
+                ],
+                "type": "string",
+                "description": "* `doorstep` - doorstep\n* `pickup` - pickup\n* `station` - station"
+            },
+            "Money": {
+                "type": "object",
+                "properties": {
+                    "pesewas": {
+                        "type": "integer"
+                    },
+                    "display": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "display",
+                    "pesewas"
+                ]
+            },
+            "PaymentMethodEnum": {
+                "enum": [
+                    "online",
+                    "cod"
+                ],
+                "type": "string",
+                "description": "* `online` - online\n* `cod` - cod"
+            },
+            "PriceItem": {
+                "type": "object",
+                "properties": {
+                    "variant_id": {
+                        "type": "integer",
+                        "minimum": 1
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "maximum": 10000,
+                        "minimum": 1
+                    }
+                },
+                "required": [
+                    "quantity",
+                    "variant_id"
+                ]
+            },
+            "PriceRequest": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PriceItem"
+                        }
+                    }
+                },
+                "required": [
+                    "items"
+                ]
+            },
+            "PriceResponse": {
+                "type": "object",
+                "properties": {
+                    "lines": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PricedLine"
+                        }
+                    },
+                    "subtotal": {
+                        "$ref": "#/components/schemas/Money"
+                    }
+                },
+                "required": [
+                    "lines",
+                    "subtotal"
+                ]
+            },
+            "PricedLine": {
+                "type": "object",
+                "properties": {
+                    "variant_id": {
+                        "type": "integer"
+                    },
+                    "quantity": {
+                        "type": "integer"
+                    },
+                    "tier": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "type": "string"
+                    },
+                    "unit_price": {
+                        "$ref": "#/components/schemas/Money"
+                    },
+                    "line_total": {
+                        "$ref": "#/components/schemas/Money"
+                    },
+                    "list_price": {
+                        "$ref": "#/components/schemas/Money"
+                    },
+                    "tier_price": {
+                        "$ref": "#/components/schemas/Money"
+                    },
+                    "discounts": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AppliedDiscount"
+                        }
+                    }
+                },
+                "required": [
+                    "discounts",
+                    "line_total",
+                    "list_price",
+                    "quantity",
+                    "source",
+                    "tier",
+                    "tier_price",
+                    "unit_price",
+                    "variant_id"
+                ]
+            },
+            "ProductDetail": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryRef"
+                    },
+                    "images": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Image"
+                        }
+                    },
+                    "price_from": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Money"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "quantity_rules": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/QuantityRule"
+                        }
+                    },
+                    "variants": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Variant"
+                        }
+                    }
+                },
+                "required": [
+                    "category",
+                    "description",
+                    "id",
+                    "images",
+                    "name",
+                    "price_from",
+                    "quantity_rules",
+                    "slug",
+                    "variants"
+                ]
+            },
+            "ProductListItem": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "slug": {
+                        "type": "string"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryRef"
+                    },
+                    "image": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Image"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "price_from": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Money"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "in_stock": {
+                        "type": "boolean"
+                    },
+                    "has_wholesale": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "category",
+                    "has_wholesale",
+                    "id",
+                    "image",
+                    "in_stock",
+                    "name",
+                    "price_from",
+                    "slug"
+                ]
+            },
+            "ProductPage": {
+                "type": "object",
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ProductListItem"
+                        }
+                    },
+                    "next_cursor": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "next_cursor",
+                    "results"
+                ]
+            },
+            "QuantityRule": {
+                "type": "object",
+                "properties": {
+                    "tier": {
+                        "type": "string"
+                    },
+                    "min_quantity": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "min_quantity",
+                    "tier"
+                ]
+            },
+            "QuoteRequest": {
+                "type": "object",
+                "description": "Refuses fields it does not know, instead of quietly ignoring them.\n\nFor requests where an extra field is a warning sign, such as a client trying to send a price.",
+                "properties": {
+                    "method": {
+                        "$ref": "#/components/schemas/MethodEnum"
+                    },
+                    "station_name": {
+                        "type": "string",
+                        "maxLength": 100
+                    },
+                    "latitude": {
+                        "type": "number",
+                        "format": "double",
+                        "maximum": 90,
+                        "minimum": -90
+                    },
+                    "longitude": {
+                        "type": "number",
+                        "format": "double",
+                        "maximum": 180,
+                        "minimum": -180
+                    }
+                },
+                "required": [
+                    "method"
+                ]
+            },
+            "QuoteResponse": {
+                "type": "object",
+                "properties": {
+                    "method": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "fee": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/Money"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "cod_allowed": {
+                        "type": "boolean"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "road_km": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "cod_allowed",
+                    "fee",
+                    "method",
+                    "reason",
+                    "road_km",
+                    "status"
+                ]
+            },
+            "RequestCode": {
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 32
+                    }
+                },
+                "required": [
+                    "phone"
+                ]
+            },
+            "Station": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "fee": {
+                        "$ref": "#/components/schemas/Money"
+                    }
+                },
+                "required": [
+                    "fee",
+                    "name"
+                ]
+            },
+            "Tier": {
+                "type": "object",
+                "properties": {
+                    "tier": {
+                        "type": "string"
+                    },
+                    "min_quantity": {
+                        "type": "integer"
+                    },
+                    "price": {
+                        "$ref": "#/components/schemas/Money"
+                    }
+                },
+                "required": [
+                    "min_quantity",
+                    "price",
+                    "tier"
+                ]
+            },
+            "Variant": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "sku": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "string"
+                    },
+                    "colour": {
+                        "type": "string"
+                    },
+                    "available": {
+                        "type": "integer"
+                    },
+                    "in_stock": {
+                        "type": "boolean"
+                    },
+                    "tiers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Tier"
+                        }
+                    }
+                },
+                "required": [
+                    "available",
+                    "colour",
+                    "id",
+                    "in_stock",
+                    "size",
+                    "sku",
+                    "tiers"
+                ]
+            },
+            "VerifyCode": {
+                "type": "object",
+                "properties": {
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 32
+                    },
+                    "code": {
+                        "type": "string",
+                        "maxLength": 16
+                    }
+                },
+                "required": [
+                    "code",
+                    "phone"
+                ]
+            }
+        }
+    }
+}
