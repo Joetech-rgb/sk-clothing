@@ -8,7 +8,7 @@ from config.serializers import MoneySerializer
 from .search import MAX_PAGE_SIZE, SORTS
 
 MAX_CART_LINES = 50
-MAX_LINE_QUANTITY = 10_000
+MAX_LINE_QUANTITY = 1_000  # the same as the order endpoint; a test keeps them equal
 
 
 class TierSerializer(serializers.Serializer):
