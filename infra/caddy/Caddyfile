@@ -1,0 +1,41 @@
+# The web edge for staging and production when there is no Cloudflare in front: Caddy gets and
+# renews HTTPS certificates by itself for SITE_ADDRESS (the domain must already point at this server,
+# and ports 80 and 443 must be open). Values come from the server's .env through docker-compose.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode gzip zstd
+
+	# Photos go straight to object storage through presigned uploads, so bodies stay small.
+	request_body {
+		max_size 10MB
+	}
+
+	# /admin/ sits behind a password prompt of its own, in front of Django's login. It stands in for
+	# staff two-factor login until that exists.
+	@admin path /admin /admin/*
+	basic_auth @admin {
+		{$ADMIN_BASIC_USER} {$ADMIN_BASIC_HASH}
+	}
+
+	@django path /api/* /admin /admin/*
+	handle @django {
+		reverse_proxy backend:8000 {
+			# Django limits requests per visitor by this header (TRUST_CLOUDFLARE_HEADERS=1). Caddy
+			# overwrites whatever the visitor sent with the address it really saw, so it cannot be forged.
+			header_up CF-Connecting-IP {remote_host}
+			header_up X-Request-ID {http.request.uuid}
+		}
+	}
+
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	handle {
+		reverse_proxy storefront:3000
+	}
+}

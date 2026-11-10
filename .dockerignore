@@ -1,0 +1,11 @@
+# Keeps the build context small and stops a developer machine's files leaking into images.
+.git
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.venv
+.env
+.env.*
+*.zip
+docs

@@ -1,0 +1,157 @@
+# DRAFT production stack for staging and production. Pick ONE edge with COMPOSE_PROFILES in .env:
+#   caddy,storefront        no Cloudflare needed (Caddy gets HTTPS certificates by itself)
+#   cloudflare,storefront   behind Cloudflare (nginx)
+# DRAFT production stack for staging and production. Local development keeps using docker-compose.yml.
+# Needs proposal 0001 approved. Service names match the deploy workflow: "backend" and "db".
+#
+# Server-side files that are NOT in the repository (see docs/runbooks/PRODUCTION-STACK.md):
+#   .env                          secrets and settings (start from infra/production.env.example)
+#   infra/nginx/certs/origin.pem  Cloudflare origin certificate
+#   infra/nginx/certs/origin.key  its private key
+name: skclothing
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The broker must never throw queued tasks away; the cache must be free to (ADR 0009).
+  redis-broker:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - broker-data:/data
+
+  redis-cache:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend.prod
+    restart: unless-stopped
+    env_file: .env
+    # collectstatic runs at start so it sees the real settings. [CHECK] config/wsgi.py exists.
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py collectstatic --noinput &&
+        exec gunicorn config.wsgi:application
+        --bind 0.0.0.0:8000
+        --workers ${GUNICORN_WORKERS:-3}
+        --threads ${GUNICORN_THREADS:-2}
+        --timeout 30
+        --access-logfile -
+    volumes:
+      - static:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-broker:
+        condition: service_started
+      redis-cache:
+        condition: service_started
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend.prod
+    restart: unless-stopped
+    env_file: .env
+    command: celery -A config worker -l info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-broker:
+        condition: service_started
+
+  beat:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend.prod
+    restart: unless-stopped
+    env_file: .env
+    # The schedule file goes in /tmp because the app user cannot write to /app.
+    command: celery -A config beat -l info -s /tmp/celerybeat-schedule
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-broker:
+        condition: service_started
+
+  # Edge option 1, behind Cloudflare. Start with the "cloudflare" profile.
+  nginx:
+    profiles: ["cloudflare"]
+    image: nginx:stable
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./infra/nginx/cloudflare:/etc/nginx/cloudflare:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+      - static:/srv/static:ro
+    depends_on:
+      - backend
+
+  # Edge option 2, no Cloudflare needed: Caddy gets HTTPS certificates by itself.
+  # Start with the "caddy" profile. Needs SITE_ADDRESS, ACME_EMAIL, ADMIN_BASIC_USER and
+  # ADMIN_BASIC_HASH in .env (infra/server/make-env.sh writes them).
+  caddy:
+    profiles: ["caddy"]
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ADMIN_BASIC_USER: ${ADMIN_BASIC_USER:-}
+      ADMIN_BASIC_HASH: ${ADMIN_BASIC_HASH:-}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+
+  # The Next.js storefront. Started with the "storefront" profile:
+  #   docker compose -f docker-compose.prod.yml --profile storefront up -d --build
+  # nginx sends everything except /api/, /admin/ and /static/ here.
+  storefront:
+    profiles: ["storefront"]
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.storefront
+      args:
+        # Both are read when the image is built, from the server's .env file.
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+        BACKEND_ORIGIN: http://backend:8000
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+volumes:
+  pgdata:
+  broker-data:
+  static:
+  caddy-data:
+  caddy-config:
