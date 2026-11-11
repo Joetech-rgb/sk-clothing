@@ -1,3 +1,6 @@
+# DRAFT production stack for staging and production. Pick ONE edge with COMPOSE_PROFILES in .env:
+#   caddy,storefront        no Cloudflare needed (Caddy gets HTTPS certificates by itself)
+#   cloudflare,storefront   behind Cloudflare (nginx)
 # DRAFT production stack for staging and production. Local development keeps using docker-compose.yml.
 # Needs proposal 0001 approved. Service names match the deploy workflow: "backend" and "db".
 #
@@ -91,7 +94,9 @@ services:
       redis-broker:
         condition: service_started
 
+  # Edge option 1, behind Cloudflare. Start with the "cloudflare" profile.
   nginx:
+    profiles: ["cloudflare"]
     image: nginx:stable
     restart: unless-stopped
     ports:
@@ -102,6 +107,29 @@ services:
       - ./infra/nginx/cloudflare:/etc/nginx/cloudflare:ro
       - ./infra/nginx/certs:/etc/nginx/certs:ro
       - static:/srv/static:ro
+    depends_on:
+      - backend
+
+  # Edge option 2, no Cloudflare needed: Caddy gets HTTPS certificates by itself.
+  # Start with the "caddy" profile. Needs SITE_ADDRESS, ACME_EMAIL, ADMIN_BASIC_USER and
+  # ADMIN_BASIC_HASH in .env (infra/server/make-env.sh writes them).
+  caddy:
+    profiles: ["caddy"]
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      ADMIN_BASIC_USER: ${ADMIN_BASIC_USER:-}
+      ADMIN_BASIC_HASH: ${ADMIN_BASIC_HASH:-}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy-data:/data
+      - caddy-config:/config
     depends_on:
       - backend
 
@@ -125,3 +153,5 @@ volumes:
   pgdata:
   broker-data:
   static:
+  caddy-data:
+  caddy-config:

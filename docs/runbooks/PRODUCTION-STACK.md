@@ -1,5 +1,10 @@
 # Production stack (DRAFT, needs proposal 0001 approved)
 
+Two web edges are available; pick ONE with `COMPOSE_PROFILES` in `.env`:
+- **`caddy,storefront`**: no Cloudflare needed. Caddy gets and renews HTTPS certificates itself for any domain pointing at the server. Use this to get live fastest. Step-by-step: `FIRST-DEPLOY.md`.
+- **`cloudflare,storefront`**: nginx behind Cloudflare (the setup described below).
+
+
 Status date: 8 November 2026. Owner: Agent A. Replaces nothing: local development keeps `docker-compose.yml`.
 
 ## Tested and not tested
@@ -7,6 +12,10 @@ Status date: 8 November 2026. Owner: Agent A. Replaces nothing: local developmen
 | Part | Tested how |
 |---|---|
 | `infra/nginx/default.conf` | Run with real nginx 1.24 in front of a fake backend: http redirects to https; `/api/` and `/admin/` reach Django; `/static/` is served from disk; a forged `CF-Connecting-IP` from an untrusted source is overwritten; a trusted Cloudflare source gives the real client address; nginx stays up when the storefront is not running (502, no crash) |
+| `infra/caddy/Caddyfile` (real Caddy 2.11.9, using the `.env` that `make-env.sh` generates) | http redirects to https; `/api/` reaches Django and is public; a forged `CF-Connecting-IP` is overwritten with the real address; `/admin` and `/admin/` need the gate password (none and wrong give 401, the generated one gets through); `/static/` is served from disk; everything else goes to the storefront; with the storefront stopped Caddy answers 502 and the API keeps working; an 11 MB body gets 413 |
+| `infra/server/make-env.sh` | Writes `.env` with random secrets and mode 600; refuses to overwrite; rejects bad domain or email; two runs give different secrets. The bcrypt hash survives docker compose intact when single-quoted and is mangled when not (both checked), so the script quotes it |
+| `docker-compose.prod.yml` profiles (checked with Docker Compose 5.7.0, no daemon) | `caddy,storefront` starts Caddy and not nginx; `cloudflare,storefront` the reverse; no profile starts only the core services; `COMPOSE_PROFILES` inside `.env` is honoured |
+| `infra/server/bootstrap-ubuntu.sh` | `shellcheck` clean only. **Never run on a server** |
 | `infra/nginx/update-cloudflare-ips.sh` | Fake downloads: good lists are written; a garbage line, too few ranges and a failed download all write nothing. `shellcheck` clean |
 | `docker-compose.prod.yml` | YAML parses; service names match the deploy workflow (`backend`, `db`). **Never run with Docker** |
 | `infra/Dockerfile.backend.prod`, `backend/requirements/prod.txt` | **Never built** |
