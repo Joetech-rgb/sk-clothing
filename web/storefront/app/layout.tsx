@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { PageContainer, SiteFooter, SiteHeader } from "@sk/ui";
+import { CartLink } from "../components/CartLink";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,7 +16,6 @@ export const viewport: Viewport = {
 
 const NAV = [
   { label: "Products", href: "/products" },
-  { label: "Cart", href: "/cart" },
   { label: "Track order", href: "/orders" },
 ] as const;
 
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="flex min-h-dvh flex-col">
-        <SiteHeader shopName="S.K Clothing" nav={NAV} linkAs={Link} />
+        <SiteHeader shopName="S.K Clothing" nav={NAV} linkAs={Link} actions={<CartLink />} />
         <main id="main" className="flex-1">
           <PageContainer>{children}</PageContainer>
         </main>
