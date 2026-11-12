@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import models
+from django.utils import timezone
 
 from .fees import normalise_station_name
 
@@ -64,3 +65,39 @@ class DeliverySettings(models.Model):
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.pk = 1
         super().save(*args, **kwargs)
+
+
+class DeliveryCode(models.Model):
+    """The state of one order's delivery code. The code itself is never stored: it is worked out
+    from the nonce and a server secret (see derived_codes.py), so it can be shown again."""
+
+    # A plain id, not a foreign key: apps never import each other's models.
+    order_id = models.BigIntegerField(unique=True)
+    nonce = models.CharField(max_length=32)
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    locked = models.BooleanField(default=False)
+    issue_number = models.PositiveSmallIntegerField(default=1)
+    issued_at = models.DateTimeField(default=timezone.now)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    confirmed_by = models.CharField(max_length=64, blank=True)  # for example "user:12"
+
+    class Meta:
+        permissions = [("confirm_delivery", "Can confirm a delivery by entering the code")]
+
+    def __str__(self) -> str:  # never include the nonce
+        return f"delivery code for order {self.order_id}"
+
+
+class DeliveryCodeEvent(models.Model):
+    """One line of history for a delivery code. Never holds the code or the nonce."""
+
+    order_id = models.BigIntegerField(db_index=True)
+    kind = models.CharField(max_length=16)  # issued, wrong, locked, verified, reissued
+    actor = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self) -> str:
+        return f"{self.kind} (order {self.order_id})"
