@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/PlaceholderPage";
+import { CheckoutView } from "../../components/CheckoutView";
 
 export const metadata: Metadata = { title: "Checkout" };
 
-export default function Page() {
-  return <PlaceholderPage title="Checkout" />;
+export default function CheckoutPage() {
+  return <CheckoutView />;
 }
