@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Button, Card, Input } from "@sk/ui";
 import {
@@ -11,10 +11,13 @@ import {
   toValues,
 } from "../lib/checkout/form";
 import type { CheckoutValues, DeliveryMethod, FieldName } from "../lib/checkout/form";
+import type { DeliverySelection } from "../lib/checkout/request";
 import type { PinValue } from "./LocationPicker";
 
 export interface StationOption {
   name: string;
+  /** The server's fee text for this station, if you want to show it beside the name. */
+  feeDisplay?: string;
 }
 
 export interface CheckoutFormProps {
@@ -27,14 +30,22 @@ export interface CheckoutFormProps {
    * off unless the map is configured.
    */
   doorstepAvailable?: boolean;
+  /** Offer "my station is not listed". Turn off if staff cannot set a fee for unlisted stations. */
+  allowUnlistedStation?: boolean;
   /** Renders the map pin. Receives the current pin and a way to set it. */
   renderLocationPicker?: (props: {
     value: PinValue | null;
     onChange: (value: PinValue) => void;
   }) => ReactNode;
+  /** Called when the delivery choice changes, so the page can ask the server for a quote. */
+  onDeliveryChange?: (selection: DeliverySelection) => void;
+  /** The server's delivery quote text, shown under the delivery choice. */
+  deliveryNote?: ReactNode;
   submitting?: boolean;
   /** The server's error message in plain words, if any. */
   serverError?: string;
+  /** Messages from the server beside the fields they belong to. */
+  serverFieldErrors?: Partial<Record<FieldName, string>>;
   onSubmit: (values: CheckoutValues) => void;
 }
 
@@ -53,9 +64,13 @@ export function CheckoutForm({
   stations,
   codAllowed,
   doorstepAvailable = false,
+  allowUnlistedStation = true,
   renderLocationPicker,
+  onDeliveryChange,
+  deliveryNote,
   submitting = false,
   serverError,
+  serverFieldErrors,
   onSubmit,
 }: CheckoutFormProps) {
   const [form, dispatch] = useReducer(formReducer, EMPTY_FORM);
@@ -66,6 +81,22 @@ export function CheckoutForm({
     form.latitude === null || form.longitude === null
       ? null
       : { latitude: form.latitude, longitude: form.longitude };
+  const shown = { ...serverFieldErrors, ...errors };
+
+  const reportRef = useRef(onDeliveryChange);
+  useEffect(() => {
+    reportRef.current = onDeliveryChange;
+  }, [onDeliveryChange]);
+  useEffect(() => {
+    reportRef.current?.({
+      method: form.method,
+      stationName: form.stationName.trim(),
+      pin:
+        form.latitude === null || form.longitude === null
+          ? null
+          : { latitude: form.latitude, longitude: form.longitude },
+    });
+  }, [form.method, form.stationName, form.latitude, form.longitude]);
 
   function handleSubmit(event: React.SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,7 +120,7 @@ export function CheckoutForm({
           label="Your name"
           autoComplete="name"
           value={form.name}
-          error={errors.name}
+          error={shown.name}
           onChange={(e) => dispatch({ type: "set_field", field: "name", value: e.target.value })}
         />
         <Input
@@ -98,7 +129,7 @@ export function CheckoutForm({
           inputMode="tel"
           autoComplete="tel"
           value={form.phone}
-          error={errors.phone}
+          error={shown.phone}
           onChange={(e) => dispatch({ type: "set_field", field: "phone", value: e.target.value })}
         />
 
@@ -127,7 +158,7 @@ export function CheckoutForm({
               <select
                 id="station"
                 value={form.stationTyped ? OTHER_STATION : form.stationName}
-                aria-invalid={errors.station ? true : undefined}
+                aria-invalid={shown.station ? true : undefined}
                 onChange={(e) => {
                   if (e.target.value === OTHER_STATION) {
                     dispatch({ type: "set_station_typed", typed: true });
@@ -140,10 +171,12 @@ export function CheckoutForm({
                 <option value="">Choose a station</option>
                 {stations.map((s) => (
                   <option key={s.name} value={s.name}>
-                    {s.name}
+                    {s.feeDisplay ? `${s.name} (${s.feeDisplay})` : s.name}
                   </option>
                 ))}
-                <option value={OTHER_STATION}>My station is not listed</option>
+                {allowUnlistedStation && (
+                  <option value={OTHER_STATION}>My station is not listed</option>
+                )}
               </select>
             </div>
             {form.stationTyped && (
@@ -155,9 +188,9 @@ export function CheckoutForm({
                 }
               />
             )}
-            {errors.station && (
+            {shown.station && (
               <p className="text-sm text-danger" role="alert">
-                {errors.station}
+                {shown.station}
               </p>
             )}
           </div>
@@ -169,7 +202,7 @@ export function CheckoutForm({
               label="Delivery address"
               autoComplete="street-address"
               value={form.address}
-              error={errors.address}
+              error={shown.address}
               onChange={(e) =>
                 dispatch({ type: "set_field", field: "address", value: e.target.value })
               }
@@ -179,12 +212,18 @@ export function CheckoutForm({
               onChange: (v) =>
                 dispatch({ type: "set_location", latitude: v.latitude, longitude: v.longitude }),
             })}
-            {errors.location && (
+            {shown.location && (
               <p className="text-sm text-danger" role="alert">
-                {errors.location}
+                {shown.location}
               </p>
             )}
           </div>
+        )}
+
+        {deliveryNote && (
+          <p aria-live="polite" className="text-ink">
+            {deliveryNote}
+          </p>
         )}
 
         {codAllowed && (
@@ -220,7 +259,7 @@ export function CheckoutForm({
             inputMode="email"
             autoComplete="email"
             value={form.email}
-            error={errors.email}
+            error={shown.email}
             onChange={(e) => dispatch({ type: "set_field", field: "email", value: e.target.value })}
           />
         )}
