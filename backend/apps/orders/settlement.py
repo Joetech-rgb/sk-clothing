@@ -17,6 +17,7 @@ from django.db import transaction
 from apps.inventory import services as inventory
 from apps.inventory.errors import InsufficientStock, ReservationNotActive
 
+from . import notifications
 from .models import Order, OrderReservation
 from .services import transition
 from .states import Event, Fulfilment, InvalidTransition, Payment, Refund
@@ -153,5 +154,9 @@ def settle_payment(order_id: int, paid_pesewas: int) -> str:
         try:
             inventory.confirm_sale(holds)
         except ReservationNotActive:
-            return _sell_again(order)
-        return PAID
+            outcome = _sell_again(order)
+        else:
+            outcome = PAID
+        if outcome == PAID:  # a paid order with no stock is not confirmed to the customer
+            notifications.queue_payment_received(order)
+        return outcome

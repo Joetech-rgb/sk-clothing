@@ -5,12 +5,12 @@ from celery import shared_task
 from . import services
 
 
-@shared_task(name="messaging.send_outbox_message")
+@shared_task
 def send_outbox_message(message_id: int) -> str:
     return services.deliver(message_id)
 
 
-@shared_task(name="messaging.dispatch_due_messages")
+@shared_task
 def dispatch_due_messages() -> int:
     """Sweep: free stuck messages, then send everything that is due. Runs every minute."""
     services.release_stuck()

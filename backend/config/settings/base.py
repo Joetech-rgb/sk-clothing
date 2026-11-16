@@ -166,3 +166,8 @@ LOGGING = {
 
 # Paystack. Empty means every webhook is rejected (fails closed).
 PAYSTACK_SECRET_KEY = os.environ.get("PAYSTACK_SECRET_KEY", "")
+
+# The SMS provider: a dotted path to a function that builds it, for example
+# apps.messaging.sms_africastalking.build. Empty means none, so staging and production refuse
+# to send until it is set.
+SMS_PROVIDER = os.environ.get("SMS_PROVIDER", "")

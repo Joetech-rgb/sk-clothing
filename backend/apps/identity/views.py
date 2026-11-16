@@ -49,6 +49,27 @@ class VerifyCodeSerializer(serializers.Serializer):
     code = serializers.CharField(max_length=16)
 
 
+class RequestCodeResponseSerializer(serializers.Serializer):
+    expires_in_seconds = serializers.IntegerField()
+
+
+class VerifiedUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+
+
+class VerifyCodeResponseSerializer(serializers.Serializer):
+    is_new_customer = serializers.BooleanField()
+    user = VerifiedUserSerializer()
+
+
+class MeSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    full_name = serializers.CharField(allow_blank=True)
+    phone = serializers.CharField(allow_null=True)
+    email = serializers.EmailField(allow_null=True)
+    is_staff = serializers.BooleanField()
+
+
 class _SessionView(PublicView):
     def initial(self, request: Request, *args: object, **kwargs: object) -> None:
         check_origin(request)  # before anything is counted or sent
@@ -58,7 +79,7 @@ class _SessionView(PublicView):
 class RequestCodeView(_SessionView):
     throttle_classes = [AnonThrottle, RequestCodeIPThrottle]
 
-    @extend_schema(request=RequestCodeSerializer, responses={202: None})
+    @extend_schema(request=RequestCodeSerializer, responses={202: RequestCodeResponseSerializer})
     def post(self, request: Request) -> Response:
         body = RequestCodeSerializer(data=request.data)
         body.is_valid(raise_exception=True)
@@ -77,7 +98,7 @@ class RequestCodeView(_SessionView):
 class VerifyCodeView(_SessionView):
     throttle_classes = [AnonThrottle, VerifyCodeIPThrottle]
 
-    @extend_schema(request=VerifyCodeSerializer, responses={200: None})
+    @extend_schema(request=VerifyCodeSerializer, responses={200: VerifyCodeResponseSerializer})
     def post(self, request: Request) -> Response:
         body = VerifyCodeSerializer(data=request.data)
         body.is_valid(raise_exception=True)
@@ -112,7 +133,7 @@ class LogoutView(_SessionView):
 class MeView(APIView):
     """Who is signed in. 401 when nobody is, so the storefront can show the login screen."""
 
-    @extend_schema(responses={200: None})
+    @extend_schema(responses={200: MeSerializer})
     def get(self, request: Request) -> Response:
         user = request.user
         return uncached(

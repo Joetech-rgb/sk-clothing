@@ -31,6 +31,7 @@ from apps.inventory import services as inventory
 from apps.inventory.errors import IdempotencyConflict, InsufficientStock
 from apps.pricing.services import PricingError
 
+from . import notifications
 from .models import Order, OrderReservation
 from .services import LineInput, create_order
 from .states import Fulfilment, Payment
@@ -278,6 +279,8 @@ def checkout(
                 )
                 for hold in holds
             )
+            if request.pay_on_delivery:
+                notifications.queue_order_received_cod(order)
     except InsufficientStock as error:
         raise OutOfStock(error.variant_id, error.available) from error
     except IdempotencyConflict as error:
