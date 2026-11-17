@@ -31,7 +31,8 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.orders import settlement
+from apps.orders import notifications, settlement
+from apps.orders.models import Order
 from apps.orders.services import transition
 from apps.orders.states import Event, InvalidTransition
 
@@ -120,6 +121,26 @@ def queue_refunds(*, now: datetime | None = None, limit: int = 200) -> int:
 # --- 2. sending ---------------------------------------------------------------------------------
 
 
+def _tell_customer(refund: Refund, *, started: bool) -> None:
+    """Queue a refund message. A messaging problem must never touch the refund, so this runs in
+    its own savepoint and only logs the exception class (never a phone number or the text)."""
+    try:
+        order = Order.objects.filter(pk=refund.order_id).first()
+        if order is None:
+            return
+        with transaction.atomic():
+            if started:
+                notifications.queue_refund_started(
+                    order, refund_id=refund.pk, amount_pesewas=refund.amount_pesewas
+                )
+            else:
+                notifications.queue_refund_manual(order, refund_id=refund.pk)
+    except Exception as exc:  # money handling must not depend on the message queue
+        logger.warning(
+            "refund %s: could not queue the customer message (%s)", refund.pk, type(exc).__name__
+        )
+
+
 def _fail(refund_id: int, code: str, *, give_up: bool, now: datetime) -> str:
     """An attempt did not work. Retry after a pause, or hand over to a person."""
     with transaction.atomic():
@@ -133,6 +154,7 @@ def _fail(refund_id: int, code: str, *, give_up: bool, now: datetime) -> str:
             refund.next_attempt_at = None
             _order_event(refund, Event.REFUND_ESCALATED)
             _log(refund, "needs_a_person", detail=code)
+            _tell_customer(refund, started=False)
             logger.error("refund %s needs a person (%s)", refund.pk, code)
         else:
             pauses = tuple(option("backoff_minutes"))
@@ -165,6 +187,8 @@ def _apply_answer(refund_id: int, answer: RefundAnswer, now: datetime) -> str:
             _log(refund, "processing")
         elif status not in ("pending", "processing", "failed", "needs-attention"):
             logger.warning("refund %s: Paystack sent a status we do not know", refund.pk)
+        if status in ("pending", "processing", "processed"):
+            _tell_customer(refund, started=True)  # Paystack has accepted the refund
         refund.save()
         outcome = refund.status
     if status == "failed":
