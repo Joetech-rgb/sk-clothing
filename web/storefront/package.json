@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@sk/api-client": "workspace:*",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "^16.4.5",
+    "@playwright/test": "^1.65.1",
     "@tailwindcss/postcss": "^4.3.4",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
