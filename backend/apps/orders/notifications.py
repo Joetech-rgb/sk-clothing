@@ -121,3 +121,28 @@ def queue_refund_manual(order: Order, *, refund_id: object) -> None:
         wording=REFUND_MANUAL_SMS,
         key=f"refund_manual-{refund_id}",
     )
+
+
+# --- Delivery code SMS: DRAFT wording, needs the human's approval (open question 18). ---
+# The text contains the code itself. Never log the text, the code or the phone number.
+
+DELIVERY_CODE_SMS = (
+    "S.K Clothing: your delivery code for order {reference} is {code}. "
+    "Give it to the rider only when you have your items."
+)
+
+
+def queue_delivery_code(order: Order, *, code: str, issue_number: object) -> None:
+    """Send the delivery code. Call it with what issue_delivery_code or
+    reissue_delivery_code returned, inside the same transaction.
+
+    One message per issue of the code: a reissue after a lock or a lost code has a new
+    issue_number, so it sends a new message, while a repeat of the same issue sends nothing.
+    """
+    _queue_plain(
+        order,
+        template="delivery_code",
+        wording=DELIVERY_CODE_SMS,
+        key=f"delivery_code-{order.pk}-{issue_number}",
+        code=code,
+    )

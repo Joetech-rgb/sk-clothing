@@ -33,6 +33,7 @@ __all__ = [
     "check_delivery_code",
     "code_for_display",
     "issue_delivery_code",
+    "issue_number_for",
     "mark_code_used",
     "reissue_delivery_code",
 ]
@@ -152,3 +153,12 @@ def reissue_delivery_code(order_id: int, *, actor: str) -> str:
         )
         _record(order_id, "reissued", actor)
         return derive_code(order_id=order_id, nonce=row.nonce, key=_key())
+
+
+def issue_number_for(order_id: int) -> int:
+    """Which issue of the code the order is on (the first code, then each reissue).
+
+    Used to give each issue its own SMS key, so a reissue sends a new message and a repeat
+    of the same issue sends nothing.
+    """
+    return DeliveryCode.objects.values_list("issue_number", flat=True).get(order_id=order_id)

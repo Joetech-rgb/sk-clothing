@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.delivery import code_services as delivery_codes
 
+from . import notifications
 from .models import Order, OrderEvent, OrderLine, SubOrder
 from .states import (
     Event,
@@ -227,10 +228,16 @@ def mark_packed(order_id: int, *, actor: str) -> Transition:
 def dispatch_order(order_id: int, *, actor: str) -> str:
     """Send a packed delivery order out and issue its delivery code, in one transaction.
 
-    Returns the code so the caller can send it. Never log it. Repeating this is safe: the order
+    Queues the code by SMS and returns it. Never log it. Repeating this is safe: the order
     does not move twice and the same code comes back. Raises InvalidTransition for a pickup
     order, an order that is not packed, or one that is already delivered.
     """
     with transaction.atomic():
         transition(order_id, Event.DISPATCHED, actor=actor)
-        return delivery_codes.issue_delivery_code(order_id, actor=actor)
+        code = delivery_codes.issue_delivery_code(order_id, actor=actor)
+        notifications.queue_delivery_code(
+            Order.objects.get(pk=order_id),
+            code=code,
+            issue_number=delivery_codes.issue_number_for(order_id),
+        )
+        return code
