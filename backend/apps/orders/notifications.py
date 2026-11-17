@@ -47,3 +47,77 @@ def queue_payment_received(order: Order) -> None:
 def queue_order_received_cod(order: Order) -> None:
     """A pay-on-delivery order was placed; staff will phone to confirm it."""
     _queue(order, template="order_received_cod", wording=ORDER_RECEIVED_COD_SMS)
+
+
+# --- Added messages: DRAFT wording, needs the human's approval (open question 18). ---
+# These have no `total` in the text or may not have one yet, so they use _queue_plain
+# instead of _queue (which skips orders without a total).
+
+AWAITING_QUOTE_SMS = (
+    "S.K Clothing: we received order {reference}. "
+    "We are working out your delivery fee and will text you the total."
+)
+CANCELLED_UNPAID_SMS = (
+    "S.K Clothing: order {reference} was cancelled because it was not paid in time. "
+    "You can order again anytime."
+)
+REFUND_STARTED_SMS = (
+    "S.K Clothing: we started a refund of GHS {amount} for order {reference}. "
+    "It can take a few days to reach you."
+)
+REFUND_MANUAL_SMS = (
+    "S.K Clothing: your refund for order {reference} is being handled by our team. "
+    "We will contact you soon."
+)
+
+
+def _queue_plain(order: Order, *, template: str, wording: str, key: str, **values: str) -> None:
+    if not order.contact_phone:
+        return
+    messaging.queue_sms(
+        to_e164=order.contact_phone,
+        text=wording.format(reference=order.reference, **values),
+        template=template,
+        idempotency_key=key,
+    )
+
+
+def queue_awaiting_quote(order: Order) -> None:
+    """An order was placed and the delivery fee is still being worked out."""
+    _queue_plain(
+        order,
+        template="awaiting_quote",
+        wording=AWAITING_QUOTE_SMS,
+        key=f"awaiting_quote-{order.pk}",
+    )
+
+
+def queue_cancelled_unpaid(order: Order) -> None:
+    """The grace period ended without payment and the order was cancelled."""
+    _queue_plain(
+        order,
+        template="cancelled_unpaid",
+        wording=CANCELLED_UNPAID_SMS,
+        key=f"cancelled_unpaid-{order.pk}",
+    )
+
+
+def queue_refund_started(order: Order, *, refund_id: object, amount_pesewas: int) -> None:
+    """A refund was sent to Paystack. One message per refund, not per order."""
+    _queue_plain(
+        order,
+        template="refund_started",
+        wording=REFUND_STARTED_SMS,
+        key=f"refund_started-{refund_id}",
+        amount=_ghs(amount_pesewas),
+    )
+
+
+def queue_refund_manual(order: Order, *, refund_id: object) -> None:
+    """A refund could not be sent automatically and a person is handling it."""
+    _queue_plain(
+        order,
+        template="refund_manual",
+        wording=REFUND_MANUAL_SMS,
+        key=f"refund_manual-{refund_id}",
+    )
