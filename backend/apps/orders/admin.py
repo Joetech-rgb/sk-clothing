@@ -5,7 +5,7 @@ from django.http import HttpRequest
 from apps.delivery import code_services as delivery_codes
 
 from .models import Order, OrderEvent, OrderLine
-from .services import dispatch_order, mark_packed
+from .services import dispatch_order, mark_packed, reissue_code
 from .states import InvalidTransition
 
 
@@ -107,9 +107,9 @@ class OrderAdmin(admin.ModelAdmin):
         done = skipped = 0
         for order in queryset:
             try:
-                delivery_codes.reissue_delivery_code(order.pk, actor=_actor(request))
+                reissue_code(order.pk, actor=_actor(request))
                 done += 1
             except (delivery_codes.CodeNotIssued, delivery_codes.CodeAlreadyUsed):
                 skipped += 1
-        what = "given a new delivery code (the customer sees it on the order page)"
+        what = "given a new delivery code (sent by SMS and shown on the order page)"
         self._report(request, what, done, skipped)

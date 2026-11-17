@@ -241,3 +241,20 @@ def dispatch_order(order_id: int, *, actor: str) -> str:
             issue_number=delivery_codes.issue_number_for(order_id),
         )
         return code
+
+
+def reissue_code(order_id: int, *, actor: str) -> str:
+    """Give an order a new delivery code and text it to the customer, in one transaction.
+
+    For a locked or lost code. Returns the code. Never log it. Raises CodeNotIssued if the
+    order has no code yet and CodeAlreadyUsed if it was already confirmed. Nothing is queued
+    then, and a failed message rolls the reissue back so a new code is never lost silently.
+    """
+    with transaction.atomic():
+        code = delivery_codes.reissue_delivery_code(order_id, actor=actor)
+        notifications.queue_delivery_code(
+            Order.objects.get(pk=order_id),
+            code=code,
+            issue_number=delivery_codes.issue_number_for(order_id),
+        )
+        return code
