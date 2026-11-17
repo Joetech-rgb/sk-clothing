@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from apps.delivery import code_services as delivery_codes
 
+from . import notifications
 from .models import Order, OrderEvent, OrderLine, SubOrder
 from .states import (
     Event,
@@ -217,3 +218,43 @@ def confirm_delivery(reference: str, submitted: str, *, actor: str) -> ConfirmRe
             return ConfirmResult(DELIVERED_OK, order.delivered_at)
     except InvalidTransition:  # raised inside the block, so nothing above was kept
         return ConfirmResult(NOT_OUT_FOR_DELIVERY)
+
+
+def mark_packed(order_id: int, *, actor: str) -> Transition:
+    """Staff finished packing an order that is paid (or confirmed for pay on delivery)."""
+    return transition(order_id, Event.PACKED, actor=actor)
+
+
+def dispatch_order(order_id: int, *, actor: str) -> str:
+    """Send a packed delivery order out and issue its delivery code, in one transaction.
+
+    Queues the code by SMS and returns it. Never log it. Repeating this is safe: the order
+    does not move twice and the same code comes back. Raises InvalidTransition for a pickup
+    order, an order that is not packed, or one that is already delivered.
+    """
+    with transaction.atomic():
+        transition(order_id, Event.DISPATCHED, actor=actor)
+        code = delivery_codes.issue_delivery_code(order_id, actor=actor)
+        notifications.queue_delivery_code(
+            Order.objects.get(pk=order_id),
+            code=code,
+            issue_number=delivery_codes.issue_number_for(order_id),
+        )
+        return code
+
+
+def reissue_code(order_id: int, *, actor: str) -> str:
+    """Give an order a new delivery code and text it to the customer, in one transaction.
+
+    For a locked or lost code. Returns the code. Never log it. Raises CodeNotIssued if the
+    order has no code yet and CodeAlreadyUsed if it was already confirmed. Nothing is queued
+    then, and a failed message rolls the reissue back so a new code is never lost silently.
+    """
+    with transaction.atomic():
+        code = delivery_codes.reissue_delivery_code(order_id, actor=actor)
+        notifications.queue_delivery_code(
+            Order.objects.get(pk=order_id),
+            code=code,
+            issue_number=delivery_codes.issue_number_for(order_id),
+        )
+        return code

@@ -85,6 +85,11 @@ class Order(models.Model):
 
     class Meta:
         ordering = ["-id"]
+        permissions = [
+            ("pack_order", "Can mark orders as packed"),
+            ("dispatch_order", "Can send orders out for delivery"),
+            ("reissue_delivery_code", "Can issue a new delivery code"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=Q(subtotal_pesewas__gte=0), name="order_subtotal_not_negative"
