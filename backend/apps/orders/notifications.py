@@ -8,6 +8,8 @@ back sends nothing, and a repeat sends nothing new (one message per order and ki
 Never log the text, the phone number or the total.
 """
 
+from django.conf import settings
+
 from apps.messaging import services as messaging
 
 from .models import Order
@@ -145,4 +147,36 @@ def queue_delivery_code(order: Order, *, code: str, issue_number: object) -> Non
         wording=DELIVERY_CODE_SMS,
         key=f"delivery_code-{order.pk}-{issue_number}",
         code=code,
+    )
+
+# --- The order is ready to pay: staff have set the delivery fee. -------------------------------
+# Set STOREFRONT_URL (for example https://shop.example.com) to put a link in the message.
+# Without it, or if the link makes the message too long, the message says to use the website.
+
+QUOTE_READY_SMS = (
+    "S.K Clothing: order {reference} total is GHS {total} (delivery GHS {fee}). "
+    "Pay soon or it will be cancelled. {where}"
+)
+QUOTE_WHERE_URL = "Pay at {url}/orders"
+QUOTE_WHERE_PLAIN = "Track and pay on our website."
+ONE_SMS_PART = 160
+
+
+def queue_quote_ready(order: Order) -> None:
+    """Tell the customer the total and where to pay. One message per order."""
+    total, fee = order.total_pesewas, order.delivery_fee_pesewas
+    if total is None or fee is None:
+        return
+    values = {"total": _ghs(total), "fee": _ghs(fee)}
+    url = str(getattr(settings, "STOREFRONT_URL", "") or "").rstrip("/")
+    where = QUOTE_WHERE_URL.format(url=url) if url else QUOTE_WHERE_PLAIN
+    if len(QUOTE_READY_SMS.format(reference=order.reference, where=where, **values)) > ONE_SMS_PART:
+        where = QUOTE_WHERE_PLAIN
+    _queue_plain(
+        order,
+        template="quote_ready",
+        wording=QUOTE_READY_SMS,
+        key=f"quote_ready-{order.pk}",
+        where=where,
+        **values,
     )

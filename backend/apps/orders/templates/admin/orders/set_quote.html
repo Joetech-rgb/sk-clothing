@@ -1,0 +1,14 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Set the delivery fee for order {{ order.reference }}</h1>
+<p>Items total: GHS {{ subtotal }}. The customer gets a text with the new total and is asked to pay.</p>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="hidden" name="action" value="set_quote_action">
+  <input type="hidden" name="_selected_action" value="{{ order.pk }}">
+  <input type="hidden" name="apply" value="yes">
+  <input type="submit" value="Set the fee and text the customer">
+  <a href="{{ request.path }}">Cancel</a>
+</form>
+{% endblock %}

@@ -50,7 +50,10 @@ def _stale_filter(now: datetime) -> Q:
         Q(
             payment__in=[Payment.PENDING.value, Payment.FAILED.value],
             fulfilment=Fulfilment.PENDING.value,
-            created_at__lt=now - hours("unpaid_online"),
+        )
+        & (
+            Q(quoted_at__isnull=True, created_at__lt=now - hours("unpaid_online"))
+            | Q(quoted_at__lt=now - hours("unpaid_online"))
         )
         | Q(
             payment=Payment.PENDING.value,

@@ -258,3 +258,29 @@ def reissue_code(order_id: int, *, actor: str) -> str:
             issue_number=delivery_codes.issue_number_for(order_id),
         )
         return code
+
+class QuoteNotAllowed(Exception):
+    """The order is not waiting for a delivery quote, or it already has a delivery fee."""
+
+
+def set_delivery_quote(order_id: int, fee_pesewas: int, *, actor: str) -> int:
+    """Staff set the delivery fee on an order waiting for a quote, in one transaction.
+
+    Sets the fee, records when it was quoted (the unpaid grace period counts from then), moves
+    the order on so it can be paid, and texts the customer the total. Returns the total in
+    pesewas. Raises QuoteNotAllowed, and changes nothing, if the order is not waiting for a quote
+    or already has a fee: transition() treats a repeated QUOTE_SET as a no-op, so without this
+    check a second call would silently overwrite a price the customer may already have paid.
+    """
+    if fee_pesewas < 0:
+        raise ValueError("a delivery fee cannot be negative")
+    with transaction.atomic():
+        order = Order.objects.select_for_update().get(pk=order_id)
+        if order.fulfilment != "awaiting_quote" or order.delivery_fee_pesewas is not None:
+            raise QuoteNotAllowed
+        order.delivery_fee_pesewas = fee_pesewas
+        order.quoted_at = timezone.now()
+        order.save(update_fields=["delivery_fee_pesewas", "quoted_at", "updated_at"])
+        transition(order_id, Event.QUOTE_SET, actor=actor)
+        notifications.queue_quote_ready(order)
+        return order.subtotal_pesewas + fee_pesewas

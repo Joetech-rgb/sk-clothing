@@ -281,6 +281,8 @@ def checkout(
             )
             if request.pay_on_delivery:
                 notifications.queue_order_received_cod(order)
+            elif awaiting:
+                notifications.queue_awaiting_quote(order)
     except InsufficientStock as error:
         raise OutOfStock(error.variant_id, error.available) from error
     except IdempotencyConflict as error:

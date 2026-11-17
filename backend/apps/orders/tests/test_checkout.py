@@ -474,3 +474,97 @@ def test_names_numbers_and_addresses_never_reach_the_logs(shop, caplog):
     for secret in ("Ama Mensah", PHONE, E164, "241234567", "Oak Street", "key-0000001"):
         assert secret not in text
     assert "placed" in text
+
+# --- the message sent while staff work out the delivery fee -------------------------------------
+
+
+def test_an_order_waiting_for_a_quote_texts_the_customer_once(shop):
+    from apps.messaging.models import OutboxMessage
+
+    data = body([(shop.shirt, 1)], "station", station_name="Tamale")
+    assert place(APIClient(), data).status_code == 201
+    order = Order.objects.get()
+    message = OutboxMessage.objects.get(template="awaiting_quote")
+    assert message.recipient == order.contact_phone
+    assert message.idempotency_key == f"awaiting_quote-{order.pk}"
+    assert place(APIClient(), data).json()["replayed"] is True  # same key: nothing new is sent
+    assert OutboxMessage.objects.filter(template="awaiting_quote").count() == 1
+
+
+def test_an_order_with_a_known_fee_sends_no_quote_message(shop):
+    from apps.messaging.models import OutboxMessage
+
+    data = body([(shop.shirt, 1)], "station", station_name="Kumasi STC")
+    assert place(APIClient(), data).status_code == 201
+    assert not OutboxMessage.objects.filter(template="awaiting_quote").exists()
+
+# --- staff set the delivery fee on an order waiting for a quote ---------------------------------
+
+
+def _waiting_order(shop):
+    data = body([(shop.shirt, 1)], "station", station_name="Tamale")
+    assert place(APIClient(), data).status_code == 201
+    return Order.objects.get()
+
+
+def test_staff_set_the_fee_and_the_customer_is_asked_to_pay(shop):
+    from apps.messaging.models import OutboxMessage
+    from apps.orders.services import set_delivery_quote
+
+    order = _waiting_order(shop)
+    total = set_delivery_quote(order.pk, 3000, actor="user:1")
+    order.refresh_from_db()
+    assert total == order.subtotal_pesewas + 3000 == order.total_pesewas
+    assert order.delivery_fee_pesewas == 3000 and order.fulfilment == "pending"
+    assert order.quoted_at is not None
+    message = OutboxMessage.objects.get(template="quote_ready")
+    assert message.recipient == order.contact_phone
+    assert message.idempotency_key == f"quote_ready-{order.pk}"
+
+
+def test_a_quote_cannot_be_set_twice(shop):
+    import pytest
+
+    from apps.messaging.models import OutboxMessage
+    from apps.orders.services import QuoteNotAllowed, set_delivery_quote
+
+    order = _waiting_order(shop)
+    set_delivery_quote(order.pk, 3000, actor="user:1")
+    with pytest.raises(QuoteNotAllowed):
+        set_delivery_quote(order.pk, 5000, actor="user:1")
+    order.refresh_from_db()
+    assert order.delivery_fee_pesewas == 3000
+    assert OutboxMessage.objects.filter(template="quote_ready").count() == 1
+
+
+def test_an_order_with_a_known_fee_cannot_be_quoted(shop):
+    import pytest
+
+    from apps.orders.services import QuoteNotAllowed, set_delivery_quote
+
+    data = body([(shop.shirt, 1)], "station", station_name="Kumasi STC")
+    assert place(APIClient(), data).status_code == 201
+    order = Order.objects.get()
+    with pytest.raises(QuoteNotAllowed):
+        set_delivery_quote(order.pk, 100, actor="user:1")
+    order.refresh_from_db()
+    assert order.delivery_fee_pesewas == 2500 and order.quoted_at is None
+
+
+def test_a_quoted_order_gets_its_unpaid_grace_period_from_the_quote(shop):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.orders import expiry
+    from apps.orders.services import set_delivery_quote
+
+    order = _waiting_order(shop)
+    now = timezone.now()
+    Order.objects.filter(pk=order.pk).update(created_at=now - timedelta(hours=30))
+    set_delivery_quote(order.pk, 3000, actor="user:1")
+    # quoted just now, long after the order was placed
+    assert expiry.cancel_if_stale(order.pk, now) is False
+    Order.objects.filter(pk=order.pk).update(quoted_at=now - timedelta(hours=25))
+    # the 24 hours counted from the quote have run out
+    assert expiry.cancel_if_stale(order.pk, now) is True
