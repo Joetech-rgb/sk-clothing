@@ -26,6 +26,7 @@ from django.utils import timezone
 
 from apps.inventory import services as inventory
 
+from . import notifications
 from .models import Order
 from .services import transition
 from .states import Event, Fulfilment, Payment
@@ -73,6 +74,7 @@ def cancel_if_stale(order_id: int, now: datetime) -> bool:
             return False
         transition(order.pk, Event.CANCEL, actor="system:expiry")
         inventory.release([hold.reservation_id for hold in order.reservations.all()])
+        notifications.queue_cancelled_unpaid(order)
     return True
 
 

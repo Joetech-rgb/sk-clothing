@@ -58,7 +58,7 @@ AWAITING_QUOTE_SMS = (
     "We are working out your delivery fee and will text you the total."
 )
 CANCELLED_UNPAID_SMS = (
-    "S.K Clothing: order {reference} was cancelled because it was not paid in time. "
+    "S.K Clothing: order {reference} was cancelled because it was not paid or confirmed in time. "
     "You can order again anytime."
 )
 REFUND_STARTED_SMS = (
