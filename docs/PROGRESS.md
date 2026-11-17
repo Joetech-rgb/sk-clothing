@@ -155,3 +155,74 @@ Home page JavaScript baseline, 4 November: about 132 KiB gzipped (budget 200 KiB
 
 ## Refunds
 - Refunds are created, sent to Paystack once, followed up by polling, retried with pauses, and handed to a person when they cannot be delivered; staff can record a refund made outside the system. See ADR 0020. The two beat schedule lines are in base.py. Never run against real Paystack. Customer notification and a staff retry button not built.
+
+
+## Update, 17 November 2026 (written by Claude with the human, append-only)
+
+This section was added at the end so it cannot overwrite what the agents wrote above. Where it
+disagrees with older text above, this section is newer.
+
+### Merged into main
+- PR #23 (b/finish-stage1): pack, dispatch and reissue-code staff actions, delivery fee screen,
+  response shapes.
+- PR #26 (b/delivery-code-sms): the customer SMS messages and the delivery code SMS, sent at
+  dispatch and on staff reissue. It also carried the commits of PR #25.
+
+### Open pull requests (check each one is green before merging)
+- PR #27 (b/cancel-sms): texts the customer when an unpaid order is cancelled.
+- PR #28 (b/refund-sms): texts the customer when a refund starts, and when it is handed to our
+  team. A messaging problem can never block or undo a refund.
+- PR #29 (b/quote-sms): staff can set the delivery fee on an order waiting for a quote, the
+  customer is texted the total, and the awaiting-quote message is now sent at checkout.
+  Includes a database migration (new Order.quoted_at and a new permission).
+
+### Why PR #29 was needed
+Orders for an unlisted station, or a doorstep address beyond the maximum distance, wait for a
+quote. Nothing let staff give the quote, so those orders could never be paid. Also, unpaid
+online orders were cancelled 24 hours after being placed, so a quote that took longer than a day
+would have been cancelled at the next hourly run. The 24 hours now count from the quote.
+
+### Decisions made
+- The wording of the new SMS messages is approved by the human. The cancelled-unpaid wording says
+  "not paid or confirmed in time" because the same task also cancels quote orders and unconfirmed
+  pay-on-delivery orders.
+- Awaiting-quote orders get a "ready to pay" text with the total once staff set the fee.
+
+### Still to do after PR #29 merges
+1. Give the staff group the permission "Can set the delivery fee on an order".
+2. Set STOREFRONT_URL in the environment so the SMS can carry a link (it assumes the tracking
+   page is at /orders). Without it the SMS says "Track and pay on our website."
+3. Agent C: the order tracking page cannot take payment (OrderCard.tsx only shows the payment
+   status). Customers who get the "ready to pay" text have nowhere to pay. See the brief.
+   Until that ships, staff should not use the quote action on real orders.
+4. Try the admin page once on staging: place an order for an unlisted station (for example
+   Tamale), set the fee, and check the text. The page has not been seen in a browser yet.
+
+### Open decision for Agent B
+A delivery code SMS waiting to be sent keeps the plain code in OutboxMessage.body until it is
+sent or fails for good (up to six tries, up to an hour apart). The delivery tables themselves
+hold nothing that reveals the code. Confirm this is acceptable.
+
+### Not built
+- No message when a refund finishes, or when staff record a refund made outside the system.
+- Real Africa's Talking provider (the Ghana sender ID approval is pending). Email provider.
+- Staff two-factor login (dependency proposal first).
+- Backups and restore drill (never cut). Scripts were written (ops/backup.sh, ops/restore-test.sh,
+  ops/RESTORE-DRILL.md) but are not in the repo and have never been run. They need the VPS and an
+  offsite place for the copies.
+- Staging deploy, Sentry alerts, uptime monitor, Cloudflare, production routing of /api/v1.
+- Paystack test-mode run: the payment and refund code has never run against real Paystack.
+- Playwright specs and the device pass (low-end Android, iPhone).
+
+### Needs something from the human or the client
+Paystack test keys, delivery fee settings, shop location, station list and fees, VPS size,
+product list and return windows, email provider, the website address.
+
+### Working rules
+- One small pull request per concern; stacked branches are retargeted to main as the one below
+  them merges.
+- Never log an SMS text, a phone number, a delivery code or an idempotency key.
+- Run python -m ruff check . from backend before every commit. CI is the authority for tests
+  (Django packages are not installed on the human's machine).
+- A commit message containing [gen-migrations] makes CI generate the migration. CI's commit does
+  not always start the checks; push an empty commit if the Checks tab shows 0.
