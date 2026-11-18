@@ -1,11 +1,21 @@
+from decimal import Decimal
+
+from django import forms
 from django.contrib import admin, messages
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from django.template.response import TemplateResponse
 
 from apps.delivery import code_services as delivery_codes
 
 from .models import Order, OrderEvent, OrderLine
-from .services import dispatch_order, mark_packed, reissue_code
+from .services import (
+    QuoteNotAllowed,
+    dispatch_order,
+    mark_packed,
+    reissue_code,
+    set_delivery_quote,
+)
 from .states import InvalidTransition
 
 
@@ -32,11 +42,30 @@ def _actor(request: HttpRequest) -> str:
     return f"user:{request.user.pk}"
 
 
+def _cedis(pesewas: int) -> str:
+    return f"{pesewas // 100}.{pesewas % 100:02d}"
+
+
+class QuoteForm(forms.Form):
+    """The delivery fee staff quote, in cedis. The upper limit only catches typing slips."""
+
+    fee = forms.DecimalField(
+        label="Delivery fee (GHS)",
+        min_value=Decimal("0"),
+        max_value=Decimal("5000"),
+        max_digits=7,
+        decimal_places=2,
+    )
+
+    def fee_pesewas(self) -> int:
+        return int(self.cleaned_data["fee"] * 100)
+
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     """Read-only. Status changes happen through services.transition(), never by editing a field.
 
-    The three actions call the order services, so they follow the same transition table as
+    The four actions call the order services, so they follow the same transition table as
     everything else. Each needs its own permission. No action ever shows a delivery code.
     """
 
@@ -44,7 +73,12 @@ class OrderAdmin(admin.ModelAdmin):
     list_filter = ("payment", "fulfilment", "refund", "pickup")
     search_fields = ("reference",)
     inlines = [OrderLineInline, OrderEventInline]
-    actions = ["mark_packed_action", "dispatch_action", "reissue_code_action"]
+    actions = [
+        "mark_packed_action",
+        "dispatch_action",
+        "reissue_code_action",
+        "set_quote_action",
+    ]
 
     def has_add_permission(self, request):
         return False
@@ -63,6 +97,9 @@ class OrderAdmin(admin.ModelAdmin):
 
     def has_reissue_permission(self, request: HttpRequest) -> bool:
         return request.user.has_perm("orders.reissue_delivery_code")
+
+    def has_quote_permission(self, request: HttpRequest) -> bool:
+        return request.user.has_perm("orders.set_delivery_quote")
 
     def _report(self, request: HttpRequest, what: str, done: int, skipped: int) -> None:
         if done:
@@ -113,3 +150,39 @@ class OrderAdmin(admin.ModelAdmin):
                 skipped += 1
         what = "given a new delivery code (sent by SMS and shown on the order page)"
         self._report(request, what, done, skipped)
+
+    @admin.action(
+        description="Set the delivery fee (order waiting for a quote)",
+        permissions=["quote"],
+    )
+    def set_quote_action(
+        self, request: HttpRequest, queryset: QuerySet[Order]
+    ) -> TemplateResponse | None:
+        """One order at a time: every order has its own fee."""
+        if queryset.count() != 1:
+            self.message_user(
+                request, "Select exactly one order to set its delivery fee.", messages.ERROR
+            )
+            return None
+        order = queryset.get()
+        if "apply" in request.POST:
+            form = QuoteForm(request.POST)
+            if form.is_valid():
+                try:
+                    set_delivery_quote(order.pk, form.fee_pesewas(), actor=_actor(request))
+                except QuoteNotAllowed:
+                    self._report(request, "", 0, 1)
+                else:
+                    what = "given a delivery fee, and the customer was texted the total"
+                    self._report(request, what, 1, 0)
+                return None
+        else:
+            form = QuoteForm()
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Set the delivery fee",
+            "order": order,
+            "subtotal": _cedis(order.subtotal_pesewas),
+            "form": form,
+        }
+        return TemplateResponse(request, "admin/orders/set_quote.html", context)
