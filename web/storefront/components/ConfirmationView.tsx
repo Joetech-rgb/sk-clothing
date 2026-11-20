@@ -2,21 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Button } from "@sk/ui";
 import { describeError } from "../lib/api/errors";
-import { PAID_STATUS } from "../lib/api/orders-temp";
 import type { OrderView } from "../lib/api/orders-temp";
-import { lookupOrder, startPayment } from "../lib/checkout/flow";
+import { lookupOrder } from "../lib/checkout/flow";
+import { canPayOnline } from "../lib/orders/pay";
 import { browserSession, loadLastOrder } from "../lib/orders/session";
 import type { LastOrder } from "../lib/orders/session";
 import { OrderCard } from "./OrderCard";
+import { PayNowPanel } from "./PayNowPanel";
 
 /** Shown right after an order is placed. */
 export function ConfirmationView() {
   const [last, setLast] = useState<LastOrder | null | undefined>(undefined);
   const [order, setOrder] = useState<OrderView | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     setLast(loadLastOrder(browserSession()));
@@ -34,19 +33,6 @@ export function ConfirmationView() {
       alive = false;
     };
   }, [last]);
-
-  async function payNow() {
-    if (!last) return;
-    setPaying(true);
-    setError(null);
-    const result = await startPayment(last.reference, last.email);
-    if (result.ok) {
-      window.location.assign(result.data.authorizationUrl);
-    } else {
-      setError(describeError(result.error));
-      setPaying(false);
-    }
-  }
 
   if (last === undefined) return <p className="text-ink-muted">Loading your order.</p>;
 
@@ -68,7 +54,7 @@ export function ConfirmationView() {
     );
   }
 
-  const needsPayment = last.payment === "online" && order !== null && order.paymentStatus !== PAID_STATUS;
+  const showPay = last.payment === "online" && order !== null && canPayOnline(order);
 
   return (
     <div className="flex flex-col gap-4">
@@ -84,11 +70,13 @@ export function ConfirmationView() {
         </p>
       )}
       {order && <OrderCard order={order} />}
-      {needsPayment && (
-        <Button fullWidth disabled={paying} onClick={payNow}>
-          {paying ? "Please wait" : "Pay now"}
-        </Button>
-      )}
+      {showPay && order && <PayNowPanel order={order} phone={last.phone} email={last.email} />}
+      <Link
+        href="/orders"
+        className="inline-flex min-h-11 items-center self-start rounded-control border border-line px-4 text-ink hover:bg-surface-muted"
+      >
+        Track this order later
+      </Link>
     </div>
   );
 }
