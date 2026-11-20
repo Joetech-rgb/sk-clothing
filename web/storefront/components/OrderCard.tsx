@@ -1,6 +1,7 @@
 import { Card } from "@sk/ui";
 import type { OrderView } from "../lib/api/orders-temp";
 import { humanize } from "../lib/orders/format";
+import { awaitingQuote } from "../lib/orders/pay";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -26,6 +27,13 @@ export function OrderCard({ order }: { order: OrderView }) {
         <Row label="Order" value={humanize(order.fulfilmentStatus)} />
         {showRefund && <Row label="Refund" value={humanize(order.refundStatus)} />}
       </dl>
+
+      {awaitingQuote(order) && (
+        <p role="status" className="rounded-control border border-line bg-surface-muted p-3 text-ink">
+          We are working out your delivery fee. We will let you know when your order is ready to
+          pay.
+        </p>
+      )}
 
       {order.deliveryCode && (
         <div className="rounded-control border border-line bg-surface-muted p-3">
