@@ -5,13 +5,15 @@ import { Button, Input } from "@sk/ui";
 import { describeError } from "../lib/api/errors";
 import type { OrderView } from "../lib/api/orders-temp";
 import { lookupOrder } from "../lib/checkout/flow";
+import { canPayOnline } from "../lib/orders/pay";
 import { OrderCard } from "./OrderCard";
+import { PayNowPanel } from "./PayNowPanel";
 
 /** Track an order by its reference and the phone number it was placed with. */
 export function TrackView() {
   const [reference, setReference] = useState("");
   const [phone, setPhone] = useState("");
-  const [order, setOrder] = useState<OrderView | null>(null);
+  const [found, setFound] = useState<{ order: OrderView; phone: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,9 +28,9 @@ export function TrackView() {
     const result = await lookupOrder(reference, phone);
     setBusy(false);
     if (result.ok) {
-      setOrder(result.data);
+      setFound({ order: result.data, phone: phone.trim() });
     } else {
-      setOrder(null);
+      setFound(null);
       setError(describeError(result.error));
     }
   }
@@ -55,7 +57,12 @@ export function TrackView() {
           {busy ? "Please wait" : "Find my order"}
         </Button>
       </form>
-      {order && <OrderCard order={order} />}
+      {found && (
+        <>
+          <OrderCard order={found.order} />
+          {canPayOnline(found.order) && <PayNowPanel order={found.order} phone={found.phone} />}
+        </>
+      )}
     </div>
   );
 }
