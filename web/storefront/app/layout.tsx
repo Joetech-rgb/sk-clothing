@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { PageContainer, SiteFooter, SiteHeader } from "@sk/ui";
+import { AccountLink } from "../components/AccountLink";
 import { CartLink } from "../components/CartLink";
 import "./globals.css";
 
@@ -23,7 +24,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="flex min-h-dvh flex-col">
-        <SiteHeader shopName="S.K Clothing" nav={NAV} linkAs={Link} actions={<CartLink />} />
+        <SiteHeader
+          shopName="S.K Clothing"
+          nav={NAV}
+          linkAs={Link}
+          actions={
+            <>
+              <AccountLink />
+              <CartLink />
+            </>
+          }
+        />
         <main id="main" className="flex-1">
           <PageContainer>{children}</PageContainer>
         </main>
